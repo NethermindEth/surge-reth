@@ -210,7 +210,7 @@ where
             blob_gas_used,
             excess_blob_gas,
             parent_beacon_block_root: attributes.payload_attributes.parent_beacon_block_root,
-            requests_root: None,
+            requests_hash: None,
         };
 
         let block = Block { header, body: vec![], ommers: vec![], withdrawals, requests: None };
@@ -568,7 +568,7 @@ where
         parent_beacon_block_root: attributes.payload_attributes.parent_beacon_block_root,
         blob_gas_used,
         excess_blob_gas,
-        requests_root: None,
+        requests_hash: None,
     };
 
     // seal the block

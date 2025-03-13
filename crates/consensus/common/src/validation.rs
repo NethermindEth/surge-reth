@@ -93,7 +93,7 @@ pub fn validate_block_pre_execution(
         let requests = block.requests.as_ref().ok_or(ConsensusError::BodyRequestsMissing)?;
         let requests_root = reth_primitives::proofs::calculate_requests_root(&requests.0);
         let header_requests_root =
-            block.requests_root.as_ref().ok_or(ConsensusError::RequestsRootMissing)?;
+            block.requests_hash.as_ref().ok_or(ConsensusError::RequestsRootMissing)?;
         if requests_root != *header_requests_root {
             return Err(ConsensusError::BodyRequestsRootDiff(
                 GotExpected { got: requests_root, expected: *header_requests_root }.into(),
@@ -442,7 +442,7 @@ mod tests {
             blob_gas_used: None,
             excess_blob_gas: None,
             parent_beacon_block_root: None,
-            requests_root: None
+            requests_hash: None
         };
         // size: 0x9b5
 

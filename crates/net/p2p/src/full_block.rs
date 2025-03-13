@@ -329,7 +329,7 @@ fn ensure_valid_body_response(
         _ => return Err(ConsensusError::WithdrawalsRootUnexpected),
     }
 
-    match (header.requests_root, &block.requests) {
+    match (header.requests_hash, &block.requests) {
         (Some(header_requests_root), Some(requests)) => {
             let requests = requests.0.as_slice();
             let requests_root = reth_primitives::proofs::calculate_requests_root(requests);

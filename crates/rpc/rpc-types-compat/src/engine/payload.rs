@@ -55,7 +55,7 @@ pub fn try_payload_v1_to_block(payload: ExecutionPayloadV1) -> Result<Block, Pay
         blob_gas_used: None,
         excess_blob_gas: None,
         parent_beacon_block_root: None,
-        requests_root: None,
+        requests_hash: None,
         extra_data: payload.extra_data,
         // Defaults
         ommers_hash: EMPTY_OMMER_ROOT_HASH,
@@ -108,7 +108,7 @@ pub fn try_payload_v4_to_block(payload: ExecutionPayloadV4) -> Result<Block, Pay
         .collect::<Vec<_>>();
 
     let requests_root = proofs::calculate_requests_root(&requests);
-    block.header.requests_root = Some(requests_root);
+    block.header.requests_hash = Some(requests_root);
     block.requests = Some(requests.into());
 
     Ok(block)
@@ -116,7 +116,7 @@ pub fn try_payload_v4_to_block(payload: ExecutionPayloadV4) -> Result<Block, Pay
 
 /// Converts [`SealedBlock`] to [`ExecutionPayload`]
 pub fn block_to_payload(value: SealedBlock) -> (ExecutionPayload, Option<B256>) {
-    if value.header.requests_root.is_some() {
+    if value.header.requests_hash.is_some() {
         (ExecutionPayload::V4(block_to_payload_v4(value)), None)
     } else if value.header.parent_beacon_block_root.is_some() {
         // block with parent beacon block root: V3

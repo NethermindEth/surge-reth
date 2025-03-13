@@ -1102,7 +1102,7 @@ mod tests {
             parent_hash: B256::random(),
             timestamp: 1,
             number: fork_activation_block,
-            requests_root: Some(EMPTY_ROOT_HASH),
+            requests_hash: Some(EMPTY_ROOT_HASH),
             ..Header::default()
         };
         let provider = executor_provider(chain_spec);
@@ -1169,7 +1169,7 @@ mod tests {
             parent_hash: B256::random(),
             timestamp: 1,
             number: fork_activation_block,
-            requests_root: Some(EMPTY_ROOT_HASH),
+            requests_hash: Some(EMPTY_ROOT_HASH),
             ..Header::default()
         };
 
@@ -1221,7 +1221,7 @@ mod tests {
         );
 
         let mut header = chain_spec.genesis_header();
-        header.requests_root = Some(EMPTY_ROOT_HASH);
+        header.requests_hash = Some(EMPTY_ROOT_HASH);
         let header_hash = header.hash_slow();
 
         let provider = executor_provider(chain_spec);
@@ -1263,7 +1263,7 @@ mod tests {
             parent_hash: header_hash,
             timestamp: 1,
             number: 1,
-            requests_root: Some(EMPTY_ROOT_HASH),
+            requests_hash: Some(EMPTY_ROOT_HASH),
             ..Header::default()
         };
         let header_hash = header.hash_slow();
@@ -1306,7 +1306,7 @@ mod tests {
             parent_hash: header_hash,
             timestamp: 1,
             number: 2,
-            requests_root: Some(EMPTY_ROOT_HASH),
+            requests_hash: Some(EMPTY_ROOT_HASH),
             ..Header::default()
         };
 

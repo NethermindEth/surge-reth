@@ -788,7 +788,7 @@ impl ChainSpec {
             parent_beacon_block_root,
             blob_gas_used,
             excess_blob_gas,
-            requests_root,
+            requests_root: requests_hash,
         }
     }
 

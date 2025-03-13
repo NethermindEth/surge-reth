@@ -44,7 +44,7 @@ pub const fn generate_valid_header(
     }
 
     // todo(onbjerg): adjust this for eip-7589
-    header.requests_root = None;
+    header.requests_hash = None;
 
     header
 }

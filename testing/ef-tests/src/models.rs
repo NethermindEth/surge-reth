@@ -113,7 +113,7 @@ impl From<Header> for SealedHeader {
             blob_gas_used: value.blob_gas_used.map(|v| v.to::<u64>()),
             excess_blob_gas: value.excess_blob_gas.map(|v| v.to::<u64>()),
             parent_beacon_block_root: value.parent_beacon_block_root,
-            requests_root: value.requests_root,
+            requests_hash: value.requests_root,
         };
         header.seal(value.hash)
     }
