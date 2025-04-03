@@ -169,7 +169,7 @@ pub fn check_anchor_tx(tx: &TransactionSigned, from: &Address, block: &Block, ta
     );
     // Check needs to have the base fee set to the block base fee
     ensure!(
-        anchor.max_fee_per_gas == block.header.base_fee_per_gas.unwrap().into(),
+        anchor.max_fee_per_gas == <u64 as Into<u128>>::into(block.header.base_fee_per_gas.unwrap()),
         "anchor transaction gas mismatch"
     );
 
@@ -227,7 +227,7 @@ pub fn check_anchor_tx_ontake(
     ensure!(anchor.gas_limit == ANCHOR_GAS_LIMIT, "anchor transaction gas price mismatch");
     // Check needs to have the base fee set to the block base fee
     ensure!(
-        anchor.max_fee_per_gas == block.header.base_fee_per_gas.unwrap().into(),
+        anchor.max_fee_per_gas == <u64 as Into<u128>>::into(block.header.base_fee_per_gas.unwrap()),
         "anchor transaction gas mismatch"
     );
 
