@@ -23,6 +23,12 @@ pub struct SealedHeader<H = Header> {
     header: H,
 }
 
+impl<H: Clone> From<alloy_primitives::Sealed<H>> for SealedHeader<H> {
+    fn from(value: alloy_primitives::Sealed<H>) -> Self {
+        Self::new(value.clone_inner(), value.hash())
+    }
+}
+
 impl<H> SealedHeader<H> {
     /// Creates the sealed header with the corresponding block hash.
     #[inline]

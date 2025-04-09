@@ -17,6 +17,7 @@ reth-primitives-traits = { workspace = true, features = ["serde"] }
 reth-ethereum-forks.workspace = true
 reth-static-file-types.workspace = true
 revm-primitives = { workspace = true, features = ["serde"] }
+revm-precompile = { workspace = true }
 reth-codecs = { workspace = true, optional = true }
 reth-zstd-compressors = { workspace = true, optional = true }
 
@@ -67,6 +68,7 @@ reth-codecs = { workspace = true, features = ["test-utils"] }
 reth-primitives-traits = { workspace = true, features = ["arbitrary"] }
 reth-testing-utils.workspace = true
 reth-trie-common = { workspace = true, features = ["arbitrary"] }
+
 revm-primitives = { workspace = true, features = ["arbitrary"] }
 
 alloy-eips = { workspace = true, features = ["arbitrary"] }
@@ -101,6 +103,7 @@ std = [
 	"k256/std",
 	"once_cell/std",
 	"revm-primitives/std",
+	"revm-precompile/std",
 	"secp256k1?/std",
 	"serde/std",
 	"alloy-trie/std",
@@ -109,12 +112,13 @@ std = [
 	"reth-ethereum-forks/std",
 	"bytes/std",
 	"derive_more/std",
-	"reth-zstd-compressors?/std"
+	"reth-zstd-compressors?/std",
 ]
 reth-codec = [
 	"dep:reth-codecs",
 	"dep:reth-zstd-compressors",
-	"dep:modular-bitfield", "std",
+	"dep:modular-bitfield",
+	"std",
 	"reth-primitives-traits/reth-codec",
 ]
 asm-keccak = ["alloy-primitives/asm-keccak", "revm-primitives/asm-keccak"]
@@ -136,7 +140,7 @@ arbitrary = [
 	"op-alloy-rpc-types?/arbitrary",
 	"reth-codecs?/arbitrary",
 	"alloy-trie/arbitrary",
-	"reth-trie-common/arbitrary"
+	"reth-trie-common/arbitrary",
 ]
 secp256k1 = ["dep:secp256k1"]
 c-kzg = [
@@ -144,6 +148,7 @@ c-kzg = [
 	"alloy-consensus/kzg",
 	"alloy-eips/kzg",
 	"revm-primitives/c-kzg",
+	"revm-precompile/c-kzg",
 ]
 optimism = [
 	"dep:op-alloy-consensus",
@@ -154,7 +159,7 @@ alloy-compat = [
 	"dep:alloy-rpc-types",
 	"dep:alloy-serde",
 	"dep:op-alloy-rpc-types",
-    "dep:alloy-network",
+	"dep:alloy-network",
 ]
 test-utils = [
 	"reth-primitives-traits/test-utils",
@@ -172,7 +177,7 @@ serde-bincode-compat = [
 	"reth-trie-common/serde-bincode-compat",
 ]
 
-taiko = ["revm-primitives/taiko"]
+taiko = ["revm-primitives/taiko", "revm-precompile/taiko"]
 
 [[bench]]
 name = "recover_ecdsa_crit"

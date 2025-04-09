@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 /// Ethereum full block.
 ///
 /// Withdrawals can be optionally included at the end of the RLP encoded message.
+
 #[cfg_attr(any(test, feature = "reth-codec"), reth_codecs::add_arbitrary_tests(rlp, 25))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Deref)]
 pub struct Block {
@@ -712,6 +713,63 @@ pub(super) mod serde_bincode_compat {
     use serde_with::{DeserializeAs, SerializeAs};
 
     use crate::transaction::serde_bincode_compat::TransactionSigned;
+
+    /// Bincode-compatible [`super::Block`] serde implementation.
+    ///
+    /// Intended to use with the [`serde_with::serde_as`] macro in the following way:
+    /// ```rust
+    /// use reth_primitives::{serde_bincode_compat, Block};
+    /// use serde::{Deserialize, Serialize};
+    /// use serde_with::serde_as;
+    ///
+    /// #[serde_as]
+    /// #[derive(Serialize, Deserialize)]
+    /// struct Data {
+    ///     #[serde_as(as = "serde_bincode_compat::Block")]
+    ///     body: Block,
+    /// }
+    /// ```
+    #[derive(Debug, Serialize, Deserialize)]
+    pub struct Block<'a> {
+        /// Block header.
+        pub header: Header<'a>,
+        /// Block body.
+        pub body: BlockBody<'a>,
+    }
+
+    impl<'a> From<&'a super::Block> for Block<'a> {
+        fn from(value: &'a super::Block) -> Self {
+            Self { header: (&value.header).into(), body: (&value.body).into() }
+        }
+    }
+
+    impl<'a> From<Block<'a>> for super::Block {
+        fn from(value: Block<'a>) -> Self {
+            Self { header: value.header.into(), body: value.body.into() }
+        }
+    }
+
+    impl SerializeAs<super::Block> for Block<'_> {
+        fn serialize_as<S>(source: &super::Block, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            Block::from(source).serialize(serializer)
+        }
+    }
+
+    impl<'de> DeserializeAs<'de, super::Block> for Block<'de> {
+        fn deserialize_as<D>(deserializer: D) -> Result<super::Block, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            Block::deserialize(deserializer).map(Into::into)
+        }
+    }
+
+    impl SerdeBincodeCompat for super::Block {
+        type BincodeRepr<'a> = Block<'a>;
+    }
 
     /// Bincode-compatible [`super::BlockBody`] serde implementation.
     ///
