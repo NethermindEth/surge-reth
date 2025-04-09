@@ -10,7 +10,7 @@ use reth_basic_payload_builder::*;
 use reth_chain_state::ExecutedBlock;
 use reth_errors::{BlockExecutionError, BlockValidationError};
 use reth_evm::{
-    execute::{BasicBlockExecutorProvider, BlockExecutionOutput, BlockExecutorProvider, Executor},
+    execute::{BlockExecutionOutput, BlockExecutorProvider, Executor},
     ConfigureEvm, NextBlockEnvAttributes,
 };
 use reth_payload_builder::EthBuiltPayload;
@@ -26,8 +26,12 @@ use reth_revm::{
     primitives::{BlockEnv, CfgEnvWithHandlerCfg},
 };
 use reth_taiko_chainspec::TaikoChainSpec;
+use reth_taiko_consensus::TaikoData;
 use reth_taiko_engine_primitives::TaikoPayloadBuilderAttributes;
-use reth_taiko_evm::{TaikoEvmConfig, TaikoExecutionStrategyFactory, TaikoExecutorProvider};
+use reth_taiko_evm::{
+    TaikoBlockExecutorProvider, TaikoEvmConfig, TaikoExecutionStrategyFactory,
+    TaikoExecutorProviderBuilder,
+};
 use reth_taiko_primitives::L1Origin;
 use reth_transaction_pool::{noop::NoopTransactionPool, PoolTransaction, TransactionPool};
 use revm_primitives::calc_excess_blob_gas;
@@ -38,13 +42,20 @@ use tracing::{debug, warn};
 pub struct TaikoPayloadBuilder<EvmConfig = TaikoEvmConfig> {
     evm_config: EvmConfig,
     /// The type responsible for creating the evm.
-    block_executor: BasicBlockExecutorProvider<TaikoExecutionStrategyFactory<EvmConfig>>,
+    block_executor: TaikoBlockExecutorProvider<TaikoExecutionStrategyFactory<EvmConfig>>,
 }
 
 impl TaikoPayloadBuilder {
     /// `TaikoPayloadBuilder` constructor.
-    pub fn new(evm_config: TaikoEvmConfig, chain_spec: Arc<TaikoChainSpec>) -> Self {
-        let block_executor = TaikoExecutorProvider::taiko(chain_spec);
+    pub fn new(
+        evm_config: TaikoEvmConfig,
+        chain_spec: Arc<TaikoChainSpec>,
+        taiko_data: TaikoData,
+    ) -> Self {
+        let block_executor = TaikoExecutorProviderBuilder::taiko(chain_spec, taiko_data)
+            .enable_anchor(true)
+            .optimistic(true)
+            .build();
         Self { block_executor, evm_config }
     }
 }
@@ -123,7 +134,7 @@ where
 /// a result indicating success with the payload or an error in case of failure.
 #[inline]
 fn taiko_payload_builder<EvmConfig, Pool, Client>(
-    executor: &BasicBlockExecutorProvider<TaikoExecutionStrategyFactory<EvmConfig>>,
+    executor: &TaikoBlockExecutorProvider<TaikoExecutionStrategyFactory<EvmConfig>>,
     args: BuildArguments<Pool, Client, TaikoPayloadBuilderAttributes, EthBuiltPayload>,
     initialized_block_env: BlockEnv,
 ) -> Result<EthBuiltPayload, PayloadBuilderError>
@@ -215,12 +226,7 @@ where
         .ok_or(BlockExecutionError::Validation(BlockValidationError::SenderRecoveryError))?;
 
     // execute the block
-    let block_input = BlockExecutionInput {
-        block: &block,
-        total_difficulty: U256::ZERO,
-        enable_anchor: true,
-        enable_skip: true,
-    };
+    let block_input = BlockExecutionInput { block: &block, total_difficulty: U256::ZERO };
     // execute the block
     let output = executor.executor(&mut db).execute(block_input)?;
     output.apply_skip(&mut block);
