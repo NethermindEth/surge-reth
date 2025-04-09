@@ -1,13 +1,46 @@
 //! Taiko related functionality for the block executor.
 
 use alloy_primitives::{uint, Address, TxKind, U256};
-use eyre::{bail, ensure, eyre, OptionExt, Result};
+use eyre::{anyhow, bail, ensure, eyre, ContextCompat, Result, WrapErr};
 use once_cell::sync::Lazy;
-use reth_primitives::{Header, TransactionSigned};
+use reth_primitives::{Block, Header, TransactionSigned};
 use std::str::FromStr;
+
+#[derive(Clone, Debug, Default)]
+/// Base fee configuration
+pub struct ProtocolBaseFeeConfig {
+    /// BaseFeeConfig::adjustmentQuotient
+    pub adjustment_quotient: u8,
+    /// BaseFeeConfig::sharingPctg
+    pub sharing_pctg: u8,
+    /// BaseFeeConfig::gasIssuancePerSecond
+    pub gas_issuance_per_second: u32,
+    /// BaseFeeConfig::minGasExcess
+    pub min_gas_excess: u64,
+    /// BaseFeeConfig::maxGasIssuancePerBlock
+    pub max_gas_issuance_per_block: u32,
+}
+
+/// Data required to validate a Taiko Block
+#[derive(Clone, Debug, Default)]
+pub struct TaikoData {
+    /// header
+    pub l1_header: Header,
+    /// parent L1 header
+    pub parent_header: Header,
+    /// L2 contract
+    pub l2_contract: Address,
+    /// base fee sharing ratio
+    pub base_fee_config: ProtocolBaseFeeConfig,
+    /// gas limit to invalidate some extra txs
+    /// to align with the client's mining rule
+    pub gas_limit: u64,
+}
 
 /// Anchor tx gas limit
 pub const ANCHOR_GAS_LIMIT: u64 = 250_000;
+/// AnchorV3 tx gas limit
+pub const ANCHOR_V3_GAS_LIMIT: u64 = 1_000_000;
 
 /// The address calling the anchor transaction
 pub static GOLDEN_TOUCH_ACCOUNT: Lazy<Address> = Lazy::new(|| {
@@ -44,17 +77,6 @@ pub fn check_anchor_signature(anchor: &TransactionSigned) -> Result<()> {
 
 use alloy_sol_types::{sol, SolCall};
 
-/// Data required to validate a Taiko Block
-#[derive(Clone, Debug, Default)]
-pub struct TaikoData {
-    /// header
-    pub l1_header: Header,
-    /// parent L1 header
-    pub parent_header: Header,
-    /// L2 contract
-    pub l2_contract: Address,
-}
-
 sol! {
     /// Anchor call
     function anchor(
@@ -69,7 +91,50 @@ sol! {
     )
         external
     {}
+
+    /// Base fee configuration
+    struct BaseFeeConfig {
+        /// adjustmentQuotient for eip1559
+        uint8 adjustmentQuotient;
+        /// sharingPctg for fee sharing
+        uint8 sharingPctg;
+        /// gasIssuancePerSecond for eip1559
+        uint32 gasIssuancePerSecond;
+        /// minGasExcess for eip1559
+        uint64 minGasExcess;
+        /// maxGasIssuancePerBlock for eip1559
+        uint32 maxGasIssuancePerBlock;
+    }
+
+    function anchorV2(
+        /// The anchor L1 block
+        uint64 _anchorBlockId,
+        /// The anchor block state root
+        bytes32 _anchorStateRoot,
+        /// The parent gas used
+        uint32 _parentGasUsed,
+        /// The base fee configuration
+        BaseFeeConfig calldata _baseFeeConfig
+    )
+        external
+        nonReentrant
+    {}
+
+    function anchorV3(
+        uint64 _anchorBlockId,
+        bytes32 _anchorStateRoot,
+        uint32 _parentGasUsed,
+        BaseFeeConfig calldata _baseFeeConfig,
+        bytes32[] calldata _signalSlots
+    )
+        external
+        nonReentrant
+    {}
 }
+
+// todo, use compiled abi once test passes
+// sol!(TaikoL2, "./res/TaikoL2.json");
+// use TaikoL2::{anchor, anchorV2};
 
 /// Decode anchor tx data
 pub fn decode_anchor(bytes: &[u8]) -> Result<anchorCall> {
@@ -87,27 +152,189 @@ pub fn decode_ontake_extra_data(extradata: &[u8]) -> u8 {
 /// Verifies the anchor tx correctness
 pub fn check_anchor_tx(
     tx: &TransactionSigned,
-    from: Address,
-    base_fee_per_gas: u64,
-    treasury: Address,
-) -> eyre::Result<()> {
-    use eyre::{bail, ensure, eyre, Context};
-    let anchor = tx.as_eip1559().ok_or_eyre("anchor tx is not an EIP1559 tx")?;
+    from: &Address,
+    block: &Block,
+    taiko_data: TaikoData,
+) -> Result<()> {
+    let anchor = tx.as_eip1559().context(anyhow!("anchor tx is not an EIP1559 tx"))?;
 
     // Check the signature
-    check_anchor_signature(tx).context(eyre!("failed to check anchor signature"))?;
+    check_anchor_signature(tx).context(anyhow!("failed to check anchor signature"))?;
 
     // Extract the `to` address
-    let TxKind::Call(to) = anchor.to else { bail!("anchor tx not a smart contract call") };
-    // Check that the L2 contract is being called
-    ensure!(to == treasury, "anchor transaction to mismatch");
+    let TxKind::Call(to) = anchor.to else { panic!("anchor tx not a smart contract call") };
     // Check that it's from the golden touch address
-    ensure!(from == *GOLDEN_TOUCH_ACCOUNT, "anchor transaction from mismatch");
+    ensure!(*from == *GOLDEN_TOUCH_ACCOUNT, "anchor transaction from mismatch");
+    // Check that the L2 contract is being called
+    ensure!(to == taiko_data.l2_contract, "anchor transaction to mismatch");
     // Tx can't have any ETH attached
     ensure!(anchor.value == U256::from(0), "anchor transaction value mismatch");
     // Tx needs to have the expected gas limit
     ensure!(anchor.gas_limit == ANCHOR_GAS_LIMIT, "anchor transaction gas price mismatch");
     // Check needs to have the base fee set to the block base fee
-    ensure!(anchor.max_fee_per_gas == base_fee_per_gas as u128, "anchor transaction gas mismatch");
+    ensure!(
+        anchor.max_fee_per_gas == <u64 as Into<u128>>::into(block.header.base_fee_per_gas.unwrap()),
+        "anchor transaction gas mismatch"
+    );
+
+    // Okay now let's decode the anchor tx to verify the inputs
+    let anchor_call = decode_anchor(&anchor.input)?;
+    // The L1 blockhash needs to match the expected value
+    ensure!(anchor_call.l1Hash == taiko_data.l1_header.hash_slow(), "L1 hash mismatch");
+    ensure!(anchor_call.l1StateRoot == taiko_data.l1_header.state_root, "L1 state root mismatch");
+    ensure!(anchor_call.l1BlockId == taiko_data.l1_header.number, "L1 block number mismatch");
+    // The parent gas used input needs to match the gas used value of the parent block
+    ensure!(
+        anchor_call.parentGasUsed == taiko_data.parent_header.gas_used as u32,
+        "parentGasUsed mismatch"
+    );
+
+    Ok(())
+}
+
+/// Decode anchor tx data for ontake fork, using anchorV2
+pub fn decode_anchor_ontake(bytes: &[u8]) -> Result<anchorV2Call> {
+    anchorV2Call::abi_decode(bytes, true).map_err(|e| anyhow!(e))
+}
+
+/// Verifies the anchor tx correctness in ontake fork
+pub fn check_anchor_tx_ontake(
+    tx: &TransactionSigned,
+    from: &Address,
+    block: &Block,
+    taiko_data: TaikoData,
+) -> Result<()> {
+    let anchor = tx.as_eip1559().context(anyhow!("anchor tx is not an EIP1559 tx"))?;
+
+    // Check the signature
+    check_anchor_signature(tx).context(anyhow!("failed to check anchor signature"))?;
+
+    // Extract the `to` address
+    let TxKind::Call(to) = anchor.to else { panic!("anchor tx not a smart contract call") };
+    // Check that it's from the golden touch address
+    ensure!(*from == *GOLDEN_TOUCH_ACCOUNT, "anchor transaction from mismatch");
+    // Check that the L2 contract is being called
+    ensure!(to == taiko_data.l2_contract, "anchor transaction to mismatch");
+    // Tx can't have any ETH attached
+    ensure!(anchor.value == U256::from(0), "anchor transaction value mismatch");
+    // Tx needs to have the expected gas limit
+    ensure!(anchor.gas_limit == ANCHOR_GAS_LIMIT, "anchor transaction gas price mismatch");
+    // Check needs to have the base fee set to the block base fee
+    ensure!(
+        anchor.max_fee_per_gas == <u64 as Into<u128>>::into(block.header.base_fee_per_gas.unwrap()),
+        "anchor transaction gas mismatch"
+    );
+
+    // Okay now let's decode the anchor tx to verify the inputs
+    let anchor_call = decode_anchor_ontake(&anchor.input)?;
+    ensure!(
+        anchor_call._anchorStateRoot == taiko_data.l1_header.state_root,
+        "L1 state root mismatch"
+    );
+    ensure!(anchor_call._anchorBlockId == taiko_data.l1_header.number, "L1 block number mismatch");
+    ensure!(
+        anchor_call._anchorStateRoot == taiko_data.l1_header.state_root,
+        "L1 state root mismatch"
+    );
+    // The parent gas used input needs to match the gas used value of the parent block
+    ensure!(
+        anchor_call._parentGasUsed == taiko_data.parent_header.gas_used as u32,
+        "parentGasUsed mismatch"
+    );
+    ensure!(
+        anchor_call._baseFeeConfig.gasIssuancePerSecond ==
+            taiko_data.base_fee_config.gas_issuance_per_second,
+        "gas issuance per second mismatch"
+    );
+    ensure!(
+        anchor_call._baseFeeConfig.adjustmentQuotient ==
+            taiko_data.base_fee_config.adjustment_quotient,
+        "basefee adjustment quotient mismatch"
+    );
+    ensure!(
+        anchor_call._baseFeeConfig.sharingPctg == taiko_data.base_fee_config.sharing_pctg,
+        "basefee ratio mismatch"
+    );
+    ensure!(
+        anchor_call._baseFeeConfig.minGasExcess == taiko_data.base_fee_config.min_gas_excess,
+        "min gas excess mismatch"
+    );
+    ensure!(
+        anchor_call._baseFeeConfig.maxGasIssuancePerBlock ==
+            taiko_data.base_fee_config.max_gas_issuance_per_block,
+        "max gas issuance per block mismatch"
+    );
+    Ok(())
+}
+
+/// Decode anchor tx data for pacaya fork, using anchorV3
+pub fn decode_anchor_pacaya(bytes: &[u8]) -> Result<anchorV3Call> {
+    anchorV3Call::abi_decode(bytes, true).map_err(|e| anyhow!(e))
+}
+
+/// Verifies the anchor tx correctness in pacaya fork
+pub fn check_anchor_tx_pacaya(
+    tx: &TransactionSigned,
+    from: &Address,
+    block: &Block,
+    taiko_data: TaikoData,
+) -> Result<()> {
+    let anchor = tx.as_eip1559().context(anyhow!("anchor tx is not an EIP1559 tx"))?;
+
+    // Check the signature
+    check_anchor_signature(tx).context(anyhow!("failed to check anchor signature"))?;
+
+    // Extract the `to` address
+    let TxKind::Call(to) = anchor.to else { panic!("anchor tx not a smart contract call") };
+    // Check that it's from the golden touch address
+    ensure!(*from == *GOLDEN_TOUCH_ACCOUNT, "anchor transaction from mismatch");
+    // Check that the L2 contract is being called
+    ensure!(to == taiko_data.l2_contract, "anchor transaction to mismatch");
+    // Tx can't have any ETH attached
+    ensure!(anchor.value == U256::from(0), "anchor transaction value mismatch");
+    // Tx needs to have the expected gas limit
+    ensure!(anchor.gas_limit == ANCHOR_V3_GAS_LIMIT, "anchor transaction gas price mismatch");
+    // Check needs to have the base fee set to the block base fee
+    ensure!(
+        anchor.max_fee_per_gas == <u64 as Into<u128>>::into(block.header.base_fee_per_gas.unwrap()),
+        "anchor transaction gas mismatch"
+    );
+
+    // Okay now let's decode the anchor tx to verify the inputs
+    let anchor_call = decode_anchor_pacaya(&anchor.input)?;
+    ensure!(anchor_call._anchorBlockId == taiko_data.l1_header.number, "L1 block number mismatch");
+    ensure!(
+        anchor_call._anchorStateRoot == taiko_data.l1_header.state_root,
+        "L1 state root mismatch"
+    );
+    // The parent gas used input needs to match the gas used value of the parent block
+    ensure!(
+        anchor_call._parentGasUsed == taiko_data.parent_header.gas_used as u32,
+        "parentGasUsed mismatch"
+    );
+    ensure!(
+        anchor_call._baseFeeConfig.gasIssuancePerSecond ==
+            taiko_data.base_fee_config.gas_issuance_per_second,
+        "gas issuance per second mismatch"
+    );
+    ensure!(
+        anchor_call._baseFeeConfig.adjustmentQuotient ==
+            taiko_data.base_fee_config.adjustment_quotient,
+        "basefee adjustment quotient mismatch"
+    );
+    ensure!(
+        anchor_call._baseFeeConfig.sharingPctg == taiko_data.base_fee_config.sharing_pctg,
+        "basefee ratio mismatch"
+    );
+    ensure!(
+        anchor_call._baseFeeConfig.minGasExcess == taiko_data.base_fee_config.min_gas_excess,
+        "min gas excess mismatch"
+    );
+    ensure!(
+        anchor_call._baseFeeConfig.maxGasIssuancePerBlock ==
+            taiko_data.base_fee_config.max_gas_issuance_per_block,
+        "max gas issuance per block mismatch"
+    );
+
     Ok(())
 }

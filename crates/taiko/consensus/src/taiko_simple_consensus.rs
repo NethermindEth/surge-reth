@@ -1,12 +1,4 @@
-//! Beacon consensus implementation.
-
-#![doc(
-    html_logo_url = "https://raw.githubusercontent.com/paradigmxyz/reth/main/assets/reth-docs.png",
-    html_favicon_url = "https://avatars0.githubusercontent.com/u/97369466?s=256",
-    issue_tracker_base_url = "https://github.com/paradigmxyz/reth/issues/"
-)]
-#![cfg_attr(not(test), warn(unused_crate_dependencies))]
-#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+//! Simple Beacon consensus implementation.
 
 use alloy_consensus::EMPTY_OMMER_ROOT_HASH;
 use alloy_primitives::B64;
@@ -25,29 +17,22 @@ use reth_primitives::{
     SealedBlock, SealedHeader,
 };
 use reth_primitives_traits::constants::MAXIMUM_GAS_LIMIT;
-use reth_provider::{L1OriginReader, ProviderError};
 use revm_primitives::U256;
 use std::{fmt::Debug, sync::Arc, time::SystemTime};
-
-mod anchor;
-mod taiko_simple_consensus;
-pub use anchor::*;
-pub use taiko_simple_consensus::*;
 
 /// Taiko beacon consensus
 ///
 /// This consensus engine does basic checks as outlined in the execution specs.
 #[derive(Debug)]
-pub struct TaikoBeaconConsensus<ChainSpec, Provider> {
+pub struct TaikoSimpleBeaconConsensus<ChainSpec> {
     /// Configuration
     chain_spec: Arc<ChainSpec>,
-    provider: Provider,
 }
 
-impl<ChainSpec, Provider> TaikoBeaconConsensus<ChainSpec, Provider> {
-    /// Create a new instance of [`TaikoBecaonConsensus`]
-    pub const fn new(chain_spec: Arc<ChainSpec>, provider: Provider) -> Self {
-        Self { chain_spec, provider }
+impl<ChainSpec> TaikoSimpleBeaconConsensus<ChainSpec> {
+    /// Create a new instance of [`TaikoSimpleBecaonConsensus`]
+    pub const fn new(chain_spec: Arc<ChainSpec>) -> Self {
+        Self { chain_spec }
     }
 
     /// Checks the gas limit for consistency between parent and self headers.
@@ -69,7 +54,7 @@ impl<ChainSpec, Provider> TaikoBeaconConsensus<ChainSpec, Provider> {
     }
 }
 
-impl<ChainSpec, N, Provider> FullConsensus<N> for TaikoBeaconConsensus<ChainSpec, Provider>
+impl<ChainSpec, N> FullConsensus<N> for TaikoSimpleBeaconConsensus<ChainSpec>
 where
     ChainSpec: Send + Sync + EthChainSpec + EthereumHardforks + Debug,
     N: NodePrimitives<
@@ -78,7 +63,6 @@ where
         Block = Block,
         Receipt = Receipt,
     >,
-    Provider: L1OriginReader + Send + Sync + Debug,
 {
     fn validate_block_post_execution(
         &self,
@@ -89,27 +73,21 @@ where
     }
 }
 
-impl<ChainSpec: Send + Sync + EthChainSpec + EthereumHardforks + Debug, Provider> HeaderValidator
-    for TaikoBeaconConsensus<ChainSpec, Provider>
-where
-    Provider: L1OriginReader + Send + Sync + Debug,
+impl<ChainSpec: Send + Sync + EthChainSpec + EthereumHardforks + Debug> HeaderValidator
+    for TaikoSimpleBeaconConsensus<ChainSpec>
 {
     fn validate_header(&self, header: &SealedHeader) -> Result<(), ConsensusError> {
         // Check if timestamp is in the future. Clock can drift but this can be consensus issue.
         let present_timestamp =
             SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
 
-        let is_softblock = match self.provider.get_l1_origin(header.number) {
-            Ok(l1_origin) => l1_origin.is_softblock(),
-            Err(ProviderError::L1OriginNotFound(_)) => false,
-            Err(_) => return Err(ConsensusError::LoadL1Origin),
-        };
-        if !is_softblock && header.timestamp > present_timestamp {
+        if header.timestamp > present_timestamp {
             return Err(ConsensusError::TimestampIsInFuture {
                 timestamp: header.timestamp,
                 present_timestamp,
             });
         }
+
         validate_header_gas(header.header())?;
         validate_header_base_fee(header.header(), &self.chain_spec)?;
 
@@ -199,10 +177,8 @@ where
     }
 }
 
-impl<ChainSpec: Send + Sync + EthChainSpec + EthereumHardforks + Debug, Provider> Consensus
-    for TaikoBeaconConsensus<ChainSpec, Provider>
-where
-    Provider: L1OriginReader + Send + Sync + Debug,
+impl<ChainSpec: Send + Sync + EthChainSpec + EthereumHardforks + Debug> Consensus
+    for TaikoSimpleBeaconConsensus<ChainSpec>
 {
     fn validate_block_pre_execution(&self, _block: &SealedBlock) -> Result<(), ConsensusError> {
         Ok(())
