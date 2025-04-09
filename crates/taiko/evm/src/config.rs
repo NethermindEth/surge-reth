@@ -6,6 +6,8 @@ pub(crate) fn revm_spec(chain_spec: &ChainSpec, block: &Head) -> revm_primitives
         revm_primitives::PRAGUE
     } else if chain_spec.fork(EthereumHardfork::Cancun).active_at_head(block) {
         revm_primitives::CANCUN
+    } else if chain_spec.fork(TaikoHardfork::Pacaya).active_at_head(block) {
+        revm_primitives::PACAYA
     } else if chain_spec.fork(TaikoHardfork::Ontake).active_at_head(block) {
         revm_primitives::ONTAKE
     } else if chain_spec.fork(TaikoHardfork::Hekla).active_at_head(block) {

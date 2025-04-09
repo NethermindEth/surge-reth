@@ -1,35 +1,44 @@
 //! Optimism block execution strategy.
 
-use crate::TaikoEvmConfig;
+use crate::{revm_spec, TaikoEvmConfig};
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use alloy_consensus::{Header, Transaction as _};
 use alloy_eips::eip7685::Requests;
-use alloy_rlp::Encodable;
-use core::fmt::Display;
-use flate2::{write::ZlibEncoder, Compression};
-use reth_chainspec::{EthereumHardfork, EthereumHardforks};
+use core::{cell::RefCell, fmt::Display};
+
+use reth_chainspec::{EthereumHardfork, EthereumHardforks, Head};
 use reth_consensus::ConsensusError;
 use reth_ethereum_consensus::validate_block_post_execution;
 use reth_evm::{
     execute::{
-        balance_increment_state, BasicBlockExecutorProvider, BlockExecutionError,
-        BlockExecutionStrategy, BlockExecutionStrategyFactory, BlockValidationError, ExecuteOutput,
-        ProviderError,
+        balance_increment_state, BasicBatchExecutor, BlockExecutionError, BlockExecutionStrategy,
+        BlockExecutionStrategyFactory, BlockExecutorProvider, BlockValidationError, ExecuteOutput,
+        Executor, ProviderError,
     },
     state_change::post_block_balance_increments,
     system_calls::{OnStateHook, SystemCaller},
     ConfigureEvm, EnvExt, TxEnvOverrides,
 };
 use reth_evm_ethereum::dao_fork::{DAO_HARDFORK_BENEFICIARY, DAO_HARDKFORK_ACCOUNTS};
-use reth_execution_types::BlockExecutionInput;
-use reth_primitives::{BlockWithSenders, EthPrimitives, Receipt, TransactionSigned};
-use reth_revm::{Database, State};
+use reth_execution_types::{BlockExecutionInput, BlockExecutionOutput};
+use reth_primitives::{
+    BlockWithSenders, EthPrimitives, NodePrimitives, Receipt, TransactionSigned,
+};
+use reth_revm::{batch::BlockBatchRecord, Database, State};
 use reth_taiko_chainspec::TaikoChainSpec;
-use reth_taiko_consensus::check_anchor_tx;
+use reth_taiko_consensus::{
+    check_anchor_tx, check_anchor_tx_ontake, check_anchor_tx_pacaya, TaikoData,
+};
 use revm::JournaledState;
-use revm_primitives::{db::DatabaseCommit, EnvWithHandlerCfg, HashSet, ResultAndState, U256};
-use std::io::{self, Write};
+use revm_primitives::{
+    db::DatabaseCommit, EVMError, EnvWithHandlerCfg, HashSet, ResultAndState, SpecId, U256,
+};
 use tracing::debug;
+
+use crate::alloc::string::ToString;
+
+#[cfg(feature = "std")]
+use flate2::{write::ZlibEncoder, Compression};
 
 /// Factory for [`OpExecutionStrategy`].
 #[derive(Debug, Clone)]
@@ -38,19 +47,38 @@ pub struct TaikoExecutionStrategyFactory<EvmConfig = TaikoEvmConfig> {
     chain_spec: Arc<TaikoChainSpec>,
     /// How to create an EVM.
     evm_config: EvmConfig,
+    /// Taiko Data
+    taiko_data: TaikoData,
+    /// Whether to skip invalid transactions (optimism). Default is false.
+    optimistic: bool,
+    /// Enable anchor transaction. Default is true.
+    enable_anchor: bool,
 }
 
 impl TaikoExecutionStrategyFactory {
     /// Creates a new default taiko executor strategy factory.
-    pub fn taiko(chain_spec: Arc<TaikoChainSpec>) -> Self {
-        Self::new(chain_spec.clone(), TaikoEvmConfig::new(chain_spec))
+    pub fn new(chain_spec: Arc<TaikoChainSpec>, taiko_data: TaikoData) -> Self {
+        Self {
+            chain_spec: chain_spec.clone(),
+            evm_config: TaikoEvmConfig::new(chain_spec),
+            taiko_data,
+            optimistic: false,
+            enable_anchor: true,
+        }
     }
 }
 
 impl<EvmConfig> TaikoExecutionStrategyFactory<EvmConfig> {
-    /// Creates a new executor strategy factory.
-    pub const fn new(chain_spec: Arc<TaikoChainSpec>, evm_config: EvmConfig) -> Self {
-        Self { chain_spec, evm_config }
+    /// Enable skip invalid transactions (optimism). Default is false.
+    pub fn optimistic(mut self, optimistic: bool) -> Self {
+        self.optimistic = optimistic;
+        self
+    }
+
+    /// Enable anchor transaction. Default is true.
+    pub fn enable_anchor(mut self, enable_anchor: bool) -> Self {
+        self.enable_anchor = enable_anchor;
+        self
     }
 }
 
@@ -73,7 +101,14 @@ where
     {
         let state =
             State::builder().with_database(db).with_bundle_update().without_state_clear().build();
-        TaikoExecutionStrategy::new(state, self.chain_spec.clone(), self.evm_config.clone())
+        TaikoExecutionStrategy::new(
+            state,
+            self.chain_spec.clone(),
+            self.evm_config.clone(),
+            self.taiko_data.clone(),
+            self.optimistic,
+            self.enable_anchor,
+        )
     }
 }
 
@@ -93,6 +128,12 @@ where
     state: State<DB>,
     /// Utility to call system smart contracts.
     system_caller: SystemCaller<EvmConfig, TaikoChainSpec>,
+    /// Taiko data
+    taiko_data: TaikoData,
+    /// Whether to skip invalid transactions (optimism). Default is false.
+    optimistic: bool,
+    /// Enable anchor transaction. Default is true.
+    enable_anchor: bool,
 }
 
 impl<DB, EvmConfig> TaikoExecutionStrategy<DB, EvmConfig>
@@ -100,9 +141,25 @@ where
     EvmConfig: Clone,
 {
     /// Creates a new [`TaikoExecutionStrategy`]
-    pub fn new(state: State<DB>, chain_spec: Arc<TaikoChainSpec>, evm_config: EvmConfig) -> Self {
+    pub fn new(
+        state: State<DB>,
+        chain_spec: Arc<TaikoChainSpec>,
+        evm_config: EvmConfig,
+        taiko_data: TaikoData,
+        optimistic: bool,
+        enable_anchor: bool,
+    ) -> Self {
         let system_caller = SystemCaller::new(evm_config.clone(), chain_spec.clone());
-        Self { state, chain_spec, evm_config, system_caller, tx_env_overrides: None }
+        Self {
+            state,
+            chain_spec,
+            evm_config,
+            system_caller,
+            tx_env_overrides: None,
+            taiko_data,
+            optimistic,
+            enable_anchor,
+        }
     }
 }
 
@@ -156,7 +213,7 @@ where
         &mut self,
         input: BlockExecutionInput<'_, BlockWithSenders>,
     ) -> Result<ExecuteOutput<Receipt>, Self::Error> {
-        let BlockExecutionInput { block, total_difficulty, enable_anchor, enable_skip } = input;
+        let BlockExecutionInput { block, total_difficulty } = input;
 
         let env = self.evm_env_for_block(&block.header, total_difficulty);
         let mut evm = self.evm_config.evm_with_env(&mut self.state, env);
@@ -166,24 +223,53 @@ where
         let treasury = self.chain_spec.treasury();
 
         for (idx, (sender, transaction)) in block.transactions_with_sender().enumerate() {
-            let is_anchor = idx == 0 && enable_anchor;
+            let is_anchor = idx == 0 && self.enable_anchor;
 
             // verify the anchor tx
             if is_anchor {
-                check_anchor_tx(
-                    transaction,
-                    *sender,
-                    block.base_fee_per_gas.unwrap_or_default(),
-                    treasury,
-                )
-                .map_err(|e| BlockValidationError::AnchorValidation { message: e.to_string() })?;
+                let spec_id = revm_spec(
+                    &self.chain_spec,
+                    &Head { number: block.number, ..Default::default() },
+                );
+
+                if spec_id.is_enabled_in(SpecId::PACAYA) {
+                    check_anchor_tx_pacaya(
+                        transaction,
+                        sender,
+                        &block.block,
+                        self.taiko_data.clone(),
+                    )
+                    .map_err(|e| BlockValidationError::AnchorValidation {
+                        message: e.to_string(),
+                    })?;
+                } else if spec_id.is_enabled_in(SpecId::ONTAKE) {
+                    check_anchor_tx_ontake(
+                        transaction,
+                        sender,
+                        &block.block,
+                        self.taiko_data.clone(),
+                    )
+                    .map_err(|e| BlockValidationError::AnchorValidation {
+                        message: e.to_string(),
+                    })?;
+                } else if spec_id.is_enabled_in(SpecId::HEKLA) {
+                    check_anchor_tx(transaction, sender, &block.block, self.taiko_data.clone())
+                        .map_err(|e| BlockValidationError::AnchorValidation {
+                            message: e.to_string(),
+                        })?;
+                } else {
+                    return Err(BlockValidationError::AnchorValidation {
+                        message: "unknown spec id for anchor".to_string(),
+                    }
+                    .into());
+                }
             }
 
             // The sum of the transaction’s gas limit, Tg, and the gas utilized in this block prior,
             // must be no greater than the block’s gasLimit.
             let block_available_gas = block.header.gas_limit - cumulative_gas_used;
             if transaction.gas_limit() > block_available_gas {
-                if !is_anchor && enable_skip {
+                if !is_anchor && self.optimistic {
                     debug!(target: "taiko::executor", hash = ?transaction.hash(), want = ?transaction.gas_limit(), got = block_available_gas, "Invalid gas limit for tx");
                     skipped_list.push(idx);
                     continue;
@@ -221,17 +307,47 @@ where
             }) {
                 Ok(res) => res,
                 Err(err) => {
-                    if !is_anchor && enable_skip {
+                    // Clear the state for the next tx
+                    evm.context.evm.journaled_state = JournaledState::new(
+                        evm.context.evm.journaled_state.spec,
+                        HashSet::default(),
+                    );
+                    if self.optimistic {
                         // Clear the state for the next tx
-                        evm.context.evm.journaled_state = JournaledState::new(
-                            evm.context.evm.journaled_state.spec,
-                            HashSet::default(),
-                        );
+                        // evm.context.evm.journaled_state = JournaledState::new(
+                        //     evm.context.evm.journaled_state.spec,
+                        //     HashSet::default(),
+                        // );
                         debug!(target: "taiko::executor", hash = ?transaction.hash(), error = ?err, "Invalid execute for tx");
                         skipped_list.push(idx);
                         continue;
                     }
-                    return Err(err.into());
+
+                    if is_anchor {
+                        return Err(BlockExecutionError::Validation(err));
+                    }
+
+                    // only continue for invalid tx errors, not db errors (because those can be
+                    // manipulated by the prover)
+                    match err {
+                        BlockValidationError::EVM { hash, error } => match *error {
+                            EVMError::Transaction(invalid_transaction) => {
+                                println!("Invalid tx at {}: {:?}", idx, invalid_transaction);
+                                // skip the tx
+                                continue;
+                            }
+                            _ => {
+                                // any other error is not allowed
+                                return Err(BlockExecutionError::Validation(
+                                    BlockValidationError::EVM { hash, error },
+                                ));
+                            }
+                        },
+                        _ => {
+                            // Any other type of error is not allowed
+                            return Err(BlockExecutionError::Validation(err));
+                        }
+                    }
                 }
             };
 
@@ -320,6 +436,10 @@ where
         &self.state
     }
 
+    fn state(self) -> State<DB> {
+        self.state
+    }
+
     fn state_mut(&mut self) -> &mut State<DB> {
         &mut self.state
     }
@@ -338,23 +458,214 @@ where
     }
 }
 
-/// Helper type with backwards compatible methods to obtain executor providers.
-#[derive(Debug)]
-pub struct TaikoExecutorProvider;
+/// A taiko block executor that uses a [`BlockExecutionStrategy`] to
+/// execute blocks.
+#[allow(missing_debug_implementations, dead_code)]
+pub struct TaikoBlockExecutor<S, DB> {
+    /// Block execution strategy.
+    pub(crate) strategy: S,
+    /// Post execution state, used to get the state after execution.
+    pub post_execute_state: Arc<RefCell<Option<State<DB>>>>,
+}
 
-impl TaikoExecutorProvider {
-    /// Creates a new default optimism executor strategy factory.
-    pub fn taiko(
-        chain_spec: Arc<TaikoChainSpec>,
-    ) -> BasicBlockExecutorProvider<TaikoExecutionStrategyFactory> {
-        BasicBlockExecutorProvider::new(TaikoExecutionStrategyFactory::taiko(chain_spec))
+impl<S, DB> TaikoBlockExecutor<S, DB> {
+    /// Creates a new `TaikoBlockExecutor` with the given strategy.
+    pub fn new(strategy: S) -> Self {
+        Self { strategy, post_execute_state: Arc::default() }
     }
 }
 
+impl<S, DB> Executor<DB> for TaikoBlockExecutor<S, DB>
+where
+    S: BlockExecutionStrategy<DB = DB>,
+    DB: Database<Error: Into<ProviderError> + Display>,
+{
+    type Input<'a> =
+        BlockExecutionInput<'a, BlockWithSenders<<S::Primitives as NodePrimitives>::Block>>;
+    type Output = BlockExecutionOutput<<S::Primitives as NodePrimitives>::Receipt>;
+    type Error = S::Error;
+
+    fn init(&mut self, env_overrides: Box<dyn TxEnvOverrides>) {
+        self.strategy.init(env_overrides);
+    }
+
+    fn execute(mut self, input: Self::Input<'_>) -> Result<Self::Output, Self::Error> {
+        let BlockExecutionInput { block, total_difficulty, .. } = input;
+
+        self.strategy.apply_pre_execution_changes(block, total_difficulty)?;
+        let ExecuteOutput { receipts, gas_used, skipped_list } =
+            self.strategy.execute_transactions(input)?;
+        let requests =
+            self.strategy.apply_post_execution_changes(block, total_difficulty, &receipts)?;
+
+        let state = self.strategy.finish();
+
+        *self.post_execute_state.borrow_mut() = Some(self.strategy.state());
+
+        Ok(BlockExecutionOutput { state, receipts, requests, gas_used, skipped_list })
+    }
+
+    fn execute_with_state_closure<F>(
+        mut self,
+        input: Self::Input<'_>,
+        mut state: F,
+    ) -> Result<Self::Output, Self::Error>
+    where
+        F: FnMut(&State<DB>),
+    {
+        let BlockExecutionInput { block, total_difficulty, .. } = input;
+
+        self.strategy.apply_pre_execution_changes(block, total_difficulty)?;
+        let ExecuteOutput { receipts, gas_used, skipped_list } =
+            self.strategy.execute_transactions(input)?;
+        let requests =
+            self.strategy.apply_post_execution_changes(block, total_difficulty, &receipts)?;
+
+        state(self.strategy.state_ref());
+
+        let state = self.strategy.finish();
+
+        *self.post_execute_state.borrow_mut() = Some(self.strategy.state());
+
+        Ok(BlockExecutionOutput { state, receipts, requests, gas_used, skipped_list })
+    }
+
+    fn execute_with_state_hook<H>(
+        mut self,
+        input: Self::Input<'_>,
+        state_hook: H,
+    ) -> Result<Self::Output, Self::Error>
+    where
+        H: OnStateHook + 'static,
+    {
+        let BlockExecutionInput { block, total_difficulty, .. } = input;
+
+        self.strategy.with_state_hook(Some(Box::new(state_hook)));
+
+        self.strategy.apply_pre_execution_changes(block, total_difficulty)?;
+        let ExecuteOutput { receipts, gas_used, skipped_list } =
+            self.strategy.execute_transactions(input)?;
+        let requests =
+            self.strategy.apply_post_execution_changes(block, total_difficulty, &receipts)?;
+
+        let state = self.strategy.finish();
+
+        *self.post_execute_state.borrow_mut() = Some(self.strategy.state());
+
+        Ok(BlockExecutionOutput { state, receipts, requests, gas_used, skipped_list })
+    }
+}
+
+impl<S, DB> TaikoBlockExecutor<S, DB>
+where
+    S: BlockExecutionStrategy<DB = DB>,
+    DB: Database<Error: Into<ProviderError> + Display>,
+{
+    /// Consumes the type, executes the block and returns the output with the post execution state.
+    ///
+    /// # Returns
+    /// The output of the block execution, state
+    pub fn execute_and_get_state(
+        self,
+        input: <Self as Executor<DB>>::Input<'_>,
+    ) -> Result<(<Self as Executor<DB>>::Output, State<DB>), <Self as Executor<DB>>::Error> {
+        let state = self.post_execute_state.clone();
+        let output = self.execute(input)?;
+
+        // Getting the post execute state and replacing it with None
+        let state = state.replace(None).expect("State should be set");
+        Ok((output, state))
+    }
+}
+
+/// A taiko block executor provider that can create executors using a strategy factory.
+#[allow(missing_debug_implementations)]
+#[derive(Debug)]
+pub struct TaikoBlockExecutorProvider<F> {
+    strategy_factory: F,
+}
+
+impl<F> Clone for TaikoBlockExecutorProvider<F>
+where
+    F: Clone,
+{
+    fn clone(&self) -> Self {
+        Self { strategy_factory: self.strategy_factory.clone() }
+    }
+}
+
+impl<F> TaikoBlockExecutorProvider<F> {
+    /// Creates a new `TaikoBlockExecutorProvider` with the given strategy factory.
+    pub const fn new(strategy_factory: F) -> Self {
+        Self { strategy_factory }
+    }
+}
+
+impl<F> BlockExecutorProvider for TaikoBlockExecutorProvider<F>
+where
+    F: BlockExecutionStrategyFactory,
+{
+    type Primitives = F::Primitives;
+
+    type Executor<DB: Database<Error: Into<ProviderError> + Display>> =
+        TaikoBlockExecutor<F::Strategy<DB>, DB>;
+
+    type BatchExecutor<DB: Database<Error: Into<ProviderError> + Display>> =
+        BasicBatchExecutor<F::Strategy<DB>>;
+
+    fn executor<DB>(&self, db: DB) -> Self::Executor<DB>
+    where
+        DB: Database<Error: Into<ProviderError> + Display>,
+    {
+        let strategy = self.strategy_factory.create_strategy(db);
+        TaikoBlockExecutor::new(strategy)
+    }
+
+    fn batch_executor<DB>(&self, db: DB) -> Self::BatchExecutor<DB>
+    where
+        DB: Database<Error: Into<ProviderError> + Display>,
+    {
+        let strategy = self.strategy_factory.create_strategy(db);
+        let batch_record = BlockBatchRecord::default();
+        BasicBatchExecutor::new(strategy, batch_record)
+    }
+}
+
+/// Helper type with backwards compatible methods to obtain executor providers.
+#[derive(Debug)]
+pub struct TaikoExecutorProviderBuilder(TaikoExecutionStrategyFactory);
+
+impl TaikoExecutorProviderBuilder {
+    /// Creates a new default taiko executor strategy factory.
+    pub fn taiko(chain_spec: Arc<TaikoChainSpec>, taiko_data: TaikoData) -> Self {
+        TaikoExecutorProviderBuilder(TaikoExecutionStrategyFactory::new(chain_spec, taiko_data))
+    }
+
+    /// Enable skip invalid transactions (optimism). Default is false.
+    pub fn optimistic(mut self, optimistic: bool) -> Self {
+        self.0 = self.0.optimistic(optimistic);
+        self
+    }
+
+    /// Enable anchor transaction. Default is true.
+    pub fn enable_anchor(mut self, enable_anchor: bool) -> Self {
+        self.0 = self.0.enable_anchor(enable_anchor);
+        self
+    }
+
+    /// Creates a new default taiko executor strategy factory.
+    pub fn build(self) -> TaikoBlockExecutorProvider<TaikoExecutionStrategyFactory> {
+        TaikoBlockExecutorProvider::new(self.0)
+    }
+}
+
+#[cfg(feature = "std")]
 /// Encode and compress a list of transactions.
-pub fn encode_and_compress_tx_list<T: Encodable>(txs: &Vec<T>) -> io::Result<Vec<u8>> {
+pub fn encode_and_compress_tx_list<T: alloy_rlp::Encodable>(
+    txs: &Vec<T>,
+) -> std::io::Result<Vec<u8>> {
     let encoded_buf = alloy_rlp::encode(txs);
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(&encoded_buf)?;
+    <ZlibEncoder<_> as std::io::Write>::write_all(&mut encoder, &encoded_buf)?;
     encoder.finish()
 }

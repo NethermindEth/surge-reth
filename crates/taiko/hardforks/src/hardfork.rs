@@ -1,6 +1,7 @@
 //! Hard forks of optimism protocol.
 
 use alloc::{boxed::Box, format, string::String};
+use alloy_primitives::U256;
 use core::{
     any::Any,
     fmt::{self, Display, Formatter},
@@ -8,7 +9,7 @@ use core::{
 };
 
 use alloy_chains::Chain;
-use reth_ethereum_forks::{hardfork, EthereumHardfork, Hardfork};
+use reth_ethereum_forks::{hardfork, EthereumHardfork, ForkCondition, Hardfork};
 
 /// The chain for the Taiko mainnet.
 pub const CHAIN_MAINNET: Chain = Chain::taiko();
@@ -27,16 +28,107 @@ hardfork!(
     /// When building a list of hardforks for a chain, it's still expected to mix with
     /// [`TaikoHardfork`].
     TaikoHardfork {
-        /// The Ontake hardfork.
+        /// The Kalta hardfork.
         Kalta,
         /// The Hekla hardfork.
         Hekla,
         /// The Ontake hardfork.
         Ontake,
+        /// The Pacaya hardfork.
+        Pacaya,
     }
 );
 
 impl TaikoHardfork {
+    /// Taiko A7 list of hardforks.
+    pub fn taiko_a7() -> [(Box<dyn Hardfork>, ForkCondition); 15] {
+        [
+            (EthereumHardfork::Frontier.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Homestead.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Dao.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Tangerine.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::SpuriousDragon.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Byzantium.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Constantinople.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Petersburg.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Istanbul.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Berlin.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::London.boxed(), ForkCondition::Block(0)),
+            (
+                EthereumHardfork::Paris.boxed(),
+                ForkCondition::TTD { fork_block: None, total_difficulty: U256::ZERO },
+            ),
+            (EthereumHardfork::Shanghai.boxed(), ForkCondition::Timestamp(0)),
+            (Self::Hekla.boxed(), ForkCondition::Block(0)),
+            (
+                Self::Ontake.boxed(),
+                ForkCondition::Block(
+                    std::env::var("HEKLA_ONTAKE_HEIGHT")
+                        .map_or(840512, |h| h.parse().unwrap_or(840512)),
+                ),
+            ),
+        ]
+    }
+
+    /// Taiko DEV list of hardforks.
+    pub fn taiko_dev() -> [(Box<dyn Hardfork>, ForkCondition); 15] {
+        [
+            (EthereumHardfork::Frontier.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Homestead.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Dao.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Tangerine.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::SpuriousDragon.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Byzantium.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Constantinople.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Petersburg.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Istanbul.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Berlin.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::London.boxed(), ForkCondition::Block(0)),
+            (
+                EthereumHardfork::Paris.boxed(),
+                ForkCondition::TTD { fork_block: None, total_difficulty: U256::from(0) },
+            ),
+            (EthereumHardfork::Shanghai.boxed(), ForkCondition::Timestamp(0)),
+            (Self::Hekla.boxed(), ForkCondition::Block(0)),
+            (
+                Self::Ontake.boxed(),
+                ForkCondition::Block(
+                    std::env::var("DEV_ONTAKE_HEIGHT").map_or(2000, |h| h.parse().unwrap_or(2000)),
+                ),
+            ),
+        ]
+    }
+
+    /// Taiko mainnet list of hardforks.
+    pub fn taiko_mainnet() -> [(Box<dyn Hardfork>, ForkCondition); 15] {
+        [
+            (EthereumHardfork::Frontier.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Homestead.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Dao.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Tangerine.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::SpuriousDragon.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Byzantium.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Constantinople.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Petersburg.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Istanbul.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::Berlin.boxed(), ForkCondition::Block(0)),
+            (EthereumHardfork::London.boxed(), ForkCondition::Block(0)),
+            (
+                EthereumHardfork::Paris.boxed(),
+                ForkCondition::TTD { fork_block: None, total_difficulty: U256::from(0) },
+            ),
+            (EthereumHardfork::Shanghai.boxed(), ForkCondition::Timestamp(0)),
+            (Self::Hekla.boxed(), ForkCondition::Block(0)),
+            (
+                Self::Ontake.boxed(),
+                ForkCondition::Block(
+                    std::env::var("MAINNET_ONTAKE_HEIGHT")
+                        .map_or(538304, |h| h.parse().unwrap_or(538304)),
+                ),
+            ),
+        ]
+    }
+
     /// Retrieves the activation block for the specified hardfork on the given chain.
     pub fn activation_block<H: Hardfork>(self, fork: H, chain: Chain) -> Option<u64> {
         match chain {
