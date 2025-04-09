@@ -15,12 +15,44 @@ use reth_execution_types::ExecutionOutcome;
 use reth_primitives::{BlockWithSenders, EthPrimitives, NodePrimitives, Receipt, Receipts};
 use reth_prune_types::PruneModes;
 use reth_storage_errors::provider::ProviderError;
-use revm::State;
+use revm::{State, StateBuilder};
 use revm_primitives::db::Database;
 use std::{fmt::Display, sync::Arc};
 
-/// A [`BlockExecutorProvider`] that returns mocked execution results.
+/// A [`Database`] that returns Mocked default values.
 #[derive(Clone, Debug, Default)]
+pub struct MockDB;
+
+impl Database for MockDB {
+    type Error = ProviderError;
+    fn basic(
+        &mut self,
+        _address: reth_primitives::Address,
+    ) -> Result<Option<revm_primitives::AccountInfo>, Self::Error> {
+        Ok(None)
+    }
+
+    fn code_by_hash(
+        &mut self,
+        _code_hash: reth_primitives::B256,
+    ) -> Result<revm_primitives::Bytecode, Self::Error> {
+        Ok(revm_primitives::Bytecode::default())
+    }
+    fn storage(
+        &mut self,
+        _address: reth_primitives::Address,
+        _index: reth_primitives::U256,
+    ) -> Result<reth_primitives::U256, Self::Error> {
+        Ok(reth_primitives::U256::ZERO)
+    }
+
+    fn block_hash(&mut self, _number: u64) -> Result<reth_primitives::B256, Self::Error> {
+        Ok(reth_primitives::B256::default())
+    }
+}
+
+/// A [`BlockExecutorProvider`] that returns mocked execution results.
+#[derive(Clone, Default, Debug)]
 pub struct MockExecutorProvider {
     exec_results: Arc<Mutex<Vec<ExecutionOutcome>>>,
 }
@@ -35,15 +67,18 @@ impl MockExecutorProvider {
 impl BlockExecutorProvider for MockExecutorProvider {
     type Primitives = EthPrimitives;
 
-    type Executor<DB: Database<Error: Into<ProviderError> + Display>> = Self;
+    type Executor<DB: Database<Error: Into<ProviderError> + Display>> = MockExecutor<DB>;
 
     type BatchExecutor<DB: Database<Error: Into<ProviderError> + Display>> = Self;
 
-    fn executor<DB>(&self, _: DB) -> Self::Executor<DB>
+    fn executor<DB>(&self, db: DB) -> Self::Executor<DB>
     where
         DB: Database<Error: Into<ProviderError> + Display>,
     {
-        self.clone()
+        MockExecutor {
+            state: StateBuilder::new_with_database(db).build(),
+            exec_results: self.exec_results.clone(),
+        }
     }
 
     fn batch_executor<DB>(&self, _: DB) -> Self::BatchExecutor<DB>
@@ -54,7 +89,16 @@ impl BlockExecutorProvider for MockExecutorProvider {
     }
 }
 
-impl<DB> Executor<DB> for MockExecutorProvider {
+/// A [`Executor`] that returns mocked execution results.
+#[derive(Debug)]
+pub struct MockExecutor<DB> {
+    /// The state of the executor.
+    state: State<DB>,
+    /// The database of the executor.
+    exec_results: Arc<Mutex<Vec<ExecutionOutcome>>>,
+}
+
+impl<DB> Executor<DB> for MockExecutor<DB> {
     type Input<'a> = BlockExecutionInput<'a, BlockWithSenders>;
     type Output = BlockExecutionOutput<Receipt>;
     type Error = BlockExecutionError;

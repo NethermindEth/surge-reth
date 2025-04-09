@@ -419,3 +419,9 @@ impl<const N: usize> From<[(EthereumHardfork, ForkCondition); N]> for ChainHardf
         )
     }
 }
+
+impl<const N: usize> From<[(Box<dyn Hardfork>, ForkCondition); N]> for ChainHardforks {
+    fn from(list: [(Box<dyn Hardfork>, ForkCondition); N]) -> Self {
+        Self::new(list.into_iter().map(|(fork, cond)| (fork, cond)).collect())
+    }
+}
