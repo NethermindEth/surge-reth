@@ -26,12 +26,10 @@ use reth_primitives::{
 };
 use reth_revm::{batch::BlockBatchRecord, Database, State};
 use reth_taiko_chainspec::TaikoChainSpec;
-use reth_taiko_consensus::{
-    check_anchor_tx, check_anchor_tx_ontake, check_anchor_tx_pacaya, TaikoData,
-};
+use reth_taiko_consensus::{check_anchor_tx_by_spec_id, TaikoData};
 use revm::JournaledState;
 use revm_primitives::{
-    db::DatabaseCommit, EVMError, EnvWithHandlerCfg, HashSet, ResultAndState, SpecId, U256,
+    db::DatabaseCommit, EVMError, EnvWithHandlerCfg, HashSet, ResultAndState, U256,
 };
 use tracing::debug;
 
@@ -70,13 +68,13 @@ impl TaikoExecutionStrategyFactory {
 
 impl<EvmConfig> TaikoExecutionStrategyFactory<EvmConfig> {
     /// Enable skip invalid transactions (optimism). Default is false.
-    pub fn optimistic(mut self, optimistic: bool) -> Self {
+    pub fn with_optimistic(mut self, optimistic: bool) -> Self {
         self.optimistic = optimistic;
         self
     }
 
     /// Enable anchor transaction. Default is true.
-    pub fn enable_anchor(mut self, enable_anchor: bool) -> Self {
+    pub fn with_enable_anchor(mut self, enable_anchor: bool) -> Self {
         self.enable_anchor = enable_anchor;
         self
     }
@@ -232,37 +230,14 @@ where
                     &Head { number: block.number, ..Default::default() },
                 );
 
-                if spec_id.is_enabled_in(SpecId::PACAYA) {
-                    check_anchor_tx_pacaya(
-                        transaction,
-                        sender,
-                        &block.block,
-                        self.taiko_data.clone(),
-                    )
-                    .map_err(|e| BlockValidationError::AnchorValidation {
-                        message: e.to_string(),
-                    })?;
-                } else if spec_id.is_enabled_in(SpecId::ONTAKE) {
-                    check_anchor_tx_ontake(
-                        transaction,
-                        sender,
-                        &block.block,
-                        self.taiko_data.clone(),
-                    )
-                    .map_err(|e| BlockValidationError::AnchorValidation {
-                        message: e.to_string(),
-                    })?;
-                } else if spec_id.is_enabled_in(SpecId::HEKLA) {
-                    check_anchor_tx(transaction, sender, &block.block, self.taiko_data.clone())
-                        .map_err(|e| BlockValidationError::AnchorValidation {
-                            message: e.to_string(),
-                        })?;
-                } else {
-                    return Err(BlockValidationError::AnchorValidation {
-                        message: "unknown spec id for anchor".to_string(),
-                    }
-                    .into());
-                }
+                check_anchor_tx_by_spec_id(
+                    spec_id,
+                    transaction,
+                    sender,
+                    block,
+                    self.taiko_data.clone(),
+                )
+                .map_err(|e| BlockValidationError::AnchorValidation { message: e.to_string() })?;
             }
 
             // The sum of the transaction’s gas limit, Tg, and the gas utilized in this block prior,
@@ -460,7 +435,7 @@ where
 
 /// A taiko block executor that uses a [`BlockExecutionStrategy`] to
 /// execute blocks.
-#[allow(missing_debug_implementations, dead_code)]
+#[expect(missing_debug_implementations)]
 pub struct TaikoBlockExecutor<S, DB> {
     /// Block execution strategy.
     pub(crate) strategy: S,
@@ -579,7 +554,6 @@ where
 }
 
 /// A taiko block executor provider that can create executors using a strategy factory.
-#[allow(missing_debug_implementations)]
 #[derive(Debug)]
 pub struct TaikoBlockExecutorProvider<F> {
     strategy_factory: F,
@@ -637,19 +611,19 @@ pub struct TaikoExecutorProviderBuilder(TaikoExecutionStrategyFactory);
 
 impl TaikoExecutorProviderBuilder {
     /// Creates a new default taiko executor strategy factory.
-    pub fn taiko(chain_spec: Arc<TaikoChainSpec>, taiko_data: TaikoData) -> Self {
+    pub fn new(chain_spec: Arc<TaikoChainSpec>, taiko_data: TaikoData) -> Self {
         TaikoExecutorProviderBuilder(TaikoExecutionStrategyFactory::new(chain_spec, taiko_data))
     }
 
     /// Enable skip invalid transactions (optimism). Default is false.
-    pub fn optimistic(mut self, optimistic: bool) -> Self {
-        self.0 = self.0.optimistic(optimistic);
+    pub fn with_optimistic(mut self, optimistic: bool) -> Self {
+        self.0 = self.0.with_optimistic(optimistic);
         self
     }
 
     /// Enable anchor transaction. Default is true.
-    pub fn enable_anchor(mut self, enable_anchor: bool) -> Self {
-        self.0 = self.0.enable_anchor(enable_anchor);
+    pub fn with_enable_anchor(mut self, enable_anchor: bool) -> Self {
+        self.0 = self.0.with_enable_anchor(enable_anchor);
         self
     }
 

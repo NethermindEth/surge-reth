@@ -111,6 +111,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28e2652684758b0d9b389d248b209ed9fd9989ef489a550265fe4bb8454fe7eb"
 dependencies = [
  "alloy-primitives 0.8.25",
+ "num_enum",
+ "strum 0.27.1",
+]
+
+[[package]]
+name = "alloy-chains"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7734aecfc58a597dde036e4c5cace2ae43e2f8bf3d406b022a1ef34da178dd49"
+dependencies = [
+ "alloy-primitives 1.0.0",
  "alloy-rlp",
  "arbitrary",
  "num_enum",
@@ -380,11 +391,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloy-primitives"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70b98b99c1dcfbe74d7f0b31433ff215e7d1555e367d90e62db904f3c9d4ff53"
+dependencies = [
+ "alloy-rlp",
+ "arbitrary",
+ "bytes",
+ "cfg-if",
+ "const-hex",
+ "derive_arbitrary",
+ "derive_more 2.0.1",
+ "foldhash",
+ "hashbrown 0.15.2",
+ "indexmap 2.9.0",
+ "itoa",
+ "k256",
+ "keccak-asm",
+ "paste",
+ "proptest",
+ "proptest-derive",
+ "rand 0.9.0",
+ "ruint",
+ "rustc-hash 2.1.1",
+ "serde",
+ "sha3",
+ "tiny-keccak",
+]
+
+[[package]]
 name = "alloy-provider"
 version = "0.7.3"
 source = "git+https://github.com/taikoxyz/alloy?branch=v0.7.3-taiko#e6f7ef1cc4a306d4798cde053d3eb99ee1821897"
 dependencies = [
- "alloy-chains",
+ "alloy-chains 0.1.69",
  "alloy-consensus",
  "alloy-eips",
  "alloy-json-rpc",
@@ -6318,6 +6359,7 @@ checksum = "3779b94aeb87e8bd4e834cee3650289ee9e0d5677f976ecdb6d219e5f4f6cd94"
 dependencies = [
  "rand_chacha 0.9.0",
  "rand_core 0.9.3",
+ "serde",
  "zerocopy 0.8.24",
 ]
 
@@ -6376,6 +6418,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "99d9a13982dcf210057a8a78572b2217b667c3beacbf3a0d8b454f6f82837d38"
 dependencies = [
  "getrandom 0.3.2",
+ "serde",
 ]
 
 [[package]]
@@ -6879,7 +6922,7 @@ dependencies = [
 name = "reth-chainspec"
 version = "1.1.4"
 dependencies = [
- "alloy-chains",
+ "alloy-chains 0.2.0",
  "alloy-consensus",
  "alloy-eips",
  "alloy-genesis",
@@ -7279,7 +7322,7 @@ dependencies = [
 name = "reth-dns-discovery"
 version = "1.1.4"
 dependencies = [
- "alloy-chains",
+ "alloy-chains 0.2.0",
  "alloy-primitives 0.8.25",
  "alloy-rlp",
  "data-encoding",
@@ -7605,7 +7648,7 @@ dependencies = [
 name = "reth-eth-wire"
 version = "1.1.4"
 dependencies = [
- "alloy-chains",
+ "alloy-chains 0.2.0",
  "alloy-eips",
  "alloy-primitives 0.8.25",
  "alloy-rlp",
@@ -7642,7 +7685,7 @@ dependencies = [
 name = "reth-eth-wire-types"
 version = "1.1.4"
 dependencies = [
- "alloy-chains",
+ "alloy-chains 0.2.0",
  "alloy-consensus",
  "alloy-eips",
  "alloy-genesis",
@@ -7714,7 +7757,7 @@ dependencies = [
 name = "reth-ethereum-forks"
 version = "1.1.4"
 dependencies = [
- "alloy-chains",
+ "alloy-chains 0.2.0",
  "alloy-consensus",
  "alloy-primitives 0.8.25",
  "alloy-rlp",
@@ -8466,7 +8509,7 @@ dependencies = [
 name = "reth-optimism-chainspec"
 version = "1.1.4"
 dependencies = [
- "alloy-chains",
+ "alloy-chains 0.2.0",
  "alloy-consensus",
  "alloy-eips",
  "alloy-genesis",
@@ -8586,7 +8629,7 @@ dependencies = [
 name = "reth-optimism-forks"
 version = "1.1.4"
 dependencies = [
- "alloy-chains",
+ "alloy-chains 0.2.0",
  "alloy-primitives 0.8.25",
  "once_cell",
  "reth-ethereum-forks",
@@ -9551,7 +9594,7 @@ dependencies = [
 name = "reth-taiko-chainspec"
 version = "1.1.4"
 dependencies = [
- "alloy-chains",
+ "alloy-chains 0.2.0",
  "alloy-consensus",
  "alloy-genesis",
  "alloy-primitives 0.8.25",
@@ -9658,7 +9701,7 @@ dependencies = [
 name = "reth-taiko-forks"
 version = "1.1.4"
 dependencies = [
- "alloy-chains",
+ "alloy-chains 0.2.0",
  "alloy-primitives 0.8.25",
  "reth-ethereum-forks",
 ]

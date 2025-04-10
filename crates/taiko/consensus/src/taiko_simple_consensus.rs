@@ -2,7 +2,7 @@
 
 use alloy_consensus::EMPTY_OMMER_ROOT_HASH;
 use alloy_primitives::B64;
-use reth_chainspec::EthChainSpec;
+use reth_chainspec::{EthChainSpec, EthereumHardfork};
 use reth_consensus::{
     Consensus, ConsensusError, FullConsensus, HeaderValidator, PostExecutionInput,
 };
@@ -16,7 +16,6 @@ use reth_primitives::{
     Block, BlockBody, BlockWithSenders, EthereumHardforks, Header, NodePrimitives, Receipt,
     SealedBlock, SealedHeader,
 };
-use reth_primitives_traits::constants::MAXIMUM_GAS_LIMIT;
 use revm_primitives::U256;
 use std::{fmt::Debug, sync::Arc, time::SystemTime};
 
@@ -29,28 +28,13 @@ pub struct TaikoSimpleBeaconConsensus<ChainSpec> {
     chain_spec: Arc<ChainSpec>,
 }
 
-impl<ChainSpec> TaikoSimpleBeaconConsensus<ChainSpec> {
+impl<ChainSpec> TaikoSimpleBeaconConsensus<ChainSpec>
+where
+    ChainSpec: Send + Sync + EthChainSpec + EthereumHardforks + Debug,
+{
     /// Create a new instance of [`TaikoSimpleBecaonConsensus`]
     pub const fn new(chain_spec: Arc<ChainSpec>) -> Self {
         Self { chain_spec }
-    }
-
-    /// Checks the gas limit for consistency between parent and self headers.
-    ///
-    /// The maximum allowable difference between self and parent gas limits is determined by the
-    /// parent's gas limit divided by the elasticity multiplier (1024).
-    fn validate_against_parent_gas_limit(
-        &self,
-        header: &SealedHeader,
-        _parent: &SealedHeader,
-    ) -> Result<(), ConsensusError> {
-        if header.gas_limit > MAXIMUM_GAS_LIMIT {
-            return Err(ConsensusError::GasLimitInvalidMaximum {
-                child_gas_limit: header.gas_limit,
-            });
-        }
-
-        Ok(())
     }
 }
 
@@ -77,17 +61,6 @@ impl<ChainSpec: Send + Sync + EthChainSpec + EthereumHardforks + Debug> HeaderVa
     for TaikoSimpleBeaconConsensus<ChainSpec>
 {
     fn validate_header(&self, header: &SealedHeader) -> Result<(), ConsensusError> {
-        // Check if timestamp is in the future. Clock can drift but this can be consensus issue.
-        let present_timestamp =
-            SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
-
-        if header.timestamp > present_timestamp {
-            return Err(ConsensusError::TimestampIsInFuture {
-                timestamp: header.timestamp,
-                present_timestamp,
-            });
-        }
-
         validate_header_gas(header.header())?;
         validate_header_base_fee(header.header(), &self.chain_spec)?;
 
@@ -154,11 +127,7 @@ impl<ChainSpec: Send + Sync + EthChainSpec + EthereumHardforks + Debug> HeaderVa
     ) -> Result<(), ConsensusError> {
         validate_against_parent_hash_number(header.header(), parent)?;
 
-        validate_against_parent_timestamp(header, parent)?;
-
-        // TODO Check difficulty increment between parent and self
-        // Ace age did increment it by some formula that we need to follow.
-        self.validate_against_parent_gas_limit(header, parent)?;
+        validate_against_parent_timestamp_inclusive(header, parent)?;
 
         // ensure that the blob gas fields for this block
         if self.chain_spec.is_cancun_active_at_timestamp(header.timestamp) {
@@ -170,9 +139,59 @@ impl<ChainSpec: Send + Sync + EthChainSpec + EthereumHardforks + Debug> HeaderVa
 
     fn validate_header_with_total_difficulty(
         &self,
-        _header: &Header,
-        _total_difficulty: U256,
+        header: &Header,
+        total_difficulty: U256,
     ) -> Result<(), ConsensusError> {
+        let is_post_merge = self
+            .chain_spec
+            .fork(EthereumHardfork::Paris)
+            .active_at_ttd(total_difficulty, header.difficulty);
+
+        if is_post_merge {
+            if !header.is_zero_difficulty() {
+                return Err(ConsensusError::TheMergeDifficultyIsNotZero)
+            }
+
+            if !header.nonce.is_zero() {
+                return Err(ConsensusError::TheMergeNonceIsNotZero)
+            }
+
+            if header.ommers_hash != EMPTY_OMMER_ROOT_HASH {
+                return Err(ConsensusError::TheMergeOmmerRootIsNotEmpty)
+            }
+
+            // Post-merge, the consensus layer is expected to perform checks such that the block
+            // timestamp is a function of the slot. This is different from pre-merge, where blocks
+            // are only allowed to be in the future (compared to the system's clock) by a certain
+            // threshold.
+            //
+            // Block validation with respect to the parent should ensure that the block timestamp
+            // is greater than its parent timestamp.
+
+            // validate header extradata for all networks post merge
+            validate_header_extradata(header)?;
+
+            // mixHash is used instead of difficulty inside EVM
+            // https://eips.ethereum.org/EIPS/eip-4399#using-mixhash-field-instead-of-difficulty
+        } else {
+            // TODO Consensus checks for old blocks:
+            //  * difficulty, mix_hash & nonce aka PoW stuff
+            // low priority as syncing is done in reverse order
+
+            // Check if timestamp is in the future. Clock can drift but this can be consensus issue.
+            let present_timestamp =
+                SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
+
+            if header.exceeds_allowed_future_timestamp(present_timestamp) {
+                return Err(ConsensusError::TimestampIsInFuture {
+                    timestamp: header.timestamp,
+                    present_timestamp,
+                })
+            }
+
+            validate_header_extradata(header)?;
+        }
+
         Ok(())
     }
 }
@@ -193,9 +212,9 @@ impl<ChainSpec: Send + Sync + EthChainSpec + EthereumHardforks + Debug> Consensu
     }
 }
 
-/// Validates the timestamp against the parent to make sure it is in the past.
+/// Validates the timestamp against the parent to make sure it is in the past or present.
 #[inline]
-fn validate_against_parent_timestamp(
+pub fn validate_against_parent_timestamp_inclusive(
     header: &SealedHeader,
     parent: &SealedHeader,
 ) -> Result<(), ConsensusError> {
@@ -203,7 +222,7 @@ fn validate_against_parent_timestamp(
         return Err(ConsensusError::TimestampIsInPast {
             parent_timestamp: parent.timestamp,
             timestamp: header.timestamp,
-        });
+        })
     }
     Ok(())
 }

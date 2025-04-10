@@ -1,46 +1,69 @@
 use std::sync::{Arc, LazyLock};
 
 use reth_chainspec::ChainSpec;
-use reth_taiko_forks::TaikoHardfork;
+use reth_taiko_forks::{
+    hardfork::{TAIKO_A7_HARDFORKS, TAIKO_DEV_HARDFORKS, TAIKO_MAINNET_HARDFORKS},
+    CHAIN_HEKLA_TESTNET, CHAIN_INTERNAL_TESTNET, CHAIN_MAINNET,
+};
 
-/// Teh Taiko A7 spec
-pub static TAIKO_A7: LazyLock<Arc<ChainSpec>> = LazyLock::new(|| {
-    ChainSpec {
-        chain: 167009.into(),
-        genesis_hash: Default::default(), /* TODO: This field will be filled in later, but better
-                                           * to create constant for it */
-        paris_block_and_final_difficulty: None,
-        hardforks: TaikoHardfork::taiko_a7().into(),
-        deposit_contract: None,
-        ..Default::default()
+use crate::TaikoChainSpec;
+
+/// The Taiko A7 spec
+pub static TAIKO_A7: LazyLock<Arc<TaikoChainSpec>> = LazyLock::new(|| {
+    let genesis = serde_json::from_str(include_str!("../res/genesis/hekla.json"))
+        .expect("Can't deserialize Unichain genesis json");
+    let hardforks = TAIKO_A7_HARDFORKS.clone();
+    TaikoChainSpec {
+        inner: ChainSpec {
+            chain: CHAIN_HEKLA_TESTNET,
+            genesis,
+            genesis_hash: Default::default(), /* TODO: This field will be filled in later, but
+                                               * better
+                                               * to create constant for it */
+            paris_block_and_final_difficulty: None,
+            hardforks,
+            deposit_contract: None,
+            ..Default::default()
+        },
     }
     .into()
 });
 
 /// The Taiko devnet spec
-pub static TAIKO_DEV: LazyLock<Arc<ChainSpec>> = LazyLock::new(|| {
-    ChainSpec {
-        chain: 167001.into(),
-        genesis_hash: Default::default(), /* TODO: This field will be filled in later, but better
-                                           * to create constant for it */
-        paris_block_and_final_difficulty: None,
-        hardforks: TaikoHardfork::taiko_dev().into(),
-        deposit_contract: None,
-        ..Default::default()
+pub static TAIKO_DEV: LazyLock<Arc<TaikoChainSpec>> = LazyLock::new(|| {
+    let hardforks = TAIKO_DEV_HARDFORKS.clone();
+    TaikoChainSpec {
+        inner: ChainSpec {
+            chain: CHAIN_INTERNAL_TESTNET,
+            genesis_hash: Default::default(), /* TODO: This field will be filled in later, but
+                                               * better
+                                               * to create constant for it */
+            paris_block_and_final_difficulty: None,
+            hardforks,
+            deposit_contract: None,
+            ..Default::default()
+        },
     }
     .into()
 });
 
 /// The Taiko Mainnet spec
-pub static TAIKO_MAINNET: LazyLock<Arc<ChainSpec>> = LazyLock::new(|| {
-    ChainSpec {
-        chain: 167000.into(),
-        genesis_hash: Default::default(), /* TODO: This field will be filled in later, but better
-                                           * to create constant for it */
-        paris_block_and_final_difficulty: None,
-        hardforks: TaikoHardfork::taiko_mainnet().into(),
-        deposit_contract: None,
-        ..Default::default()
+pub static TAIKO_MAINNET: LazyLock<Arc<TaikoChainSpec>> = LazyLock::new(|| {
+    let genesis = serde_json::from_str(include_str!("../res/genesis/mainnet.json"))
+        .expect("Can't deserialize Unichain genesis json");
+    let hardforks = TAIKO_MAINNET_HARDFORKS.clone();
+    TaikoChainSpec {
+        inner: ChainSpec {
+            chain: CHAIN_MAINNET,
+            genesis,
+            genesis_hash: Default::default(), /* TODO: This field will be filled in later, but
+                                               * better
+                                               * to create constant for it */
+            paris_block_and_final_difficulty: None,
+            hardforks,
+            deposit_contract: None,
+            ..Default::default()
+        },
     }
     .into()
 });
@@ -50,6 +73,7 @@ mod tests {
 
     use reth_chainspec::{test_fork_ids, EthereumHardfork, Hardfork};
     use reth_ethereum_forks::{ForkHash, ForkId, Head};
+    use reth_taiko_forks::TaikoHardfork;
 
     use super::*;
 

@@ -472,7 +472,7 @@ revm-precompile = { version = "15.0.0", default-features = false, features = [
 ] }
 
 # eth
-alloy-chains = { version = "0.1.32", default-features = false }
+alloy-chains = { version = "0.2", default-features = false }
 alloy-dyn-abi = "0.8.11"
 alloy-primitives = { version = "0.8.11", default-features = false }
 alloy-rlp = { version = "0.3.10", default-features = false }

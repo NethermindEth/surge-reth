@@ -52,9 +52,9 @@ impl TaikoPayloadBuilder {
         chain_spec: Arc<TaikoChainSpec>,
         taiko_data: TaikoData,
     ) -> Self {
-        let block_executor = TaikoExecutorProviderBuilder::taiko(chain_spec, taiko_data)
-            .enable_anchor(true)
-            .optimistic(true)
+        let block_executor = TaikoExecutorProviderBuilder::new(chain_spec, taiko_data)
+            .with_enable_anchor(true)
+            .with_optimistic(true)
             .build();
         Self { block_executor, evm_config }
     }
