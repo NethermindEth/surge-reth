@@ -4,8 +4,49 @@ use crate::{Block, BlockBody, Transaction, TransactionSigned};
 use alloc::{string::ToString, vec::Vec};
 use alloy_consensus::{constants::EMPTY_TRANSACTIONS, Header, TxEnvelope};
 use alloy_network::{AnyHeader, AnyRpcBlock, AnyRpcTransaction, AnyTxEnvelope};
+use alloy_rpc_types::{Block as RpcBlock, Transaction as RpcTransaction};
 use alloy_serde::WithOtherFields;
 use op_alloy_rpc_types as _;
+
+impl TryFrom<RpcBlock> for Block {
+    type Error = alloy_rpc_types::ConversionError;
+
+    fn try_from(rpc_block: RpcBlock) -> Result<Self, Self::Error> {
+        use alloy_rpc_types::ConversionError;
+
+        let transactions = {
+            let transactions: Result<Vec<TransactionSigned>, ConversionError> = match rpc_block
+                .transactions
+            {
+                alloy_rpc_types::BlockTransactions::Full(transactions) => {
+                    transactions.into_iter().map(|tx| tx.try_into()).collect()
+                }
+                alloy_rpc_types::BlockTransactions::Hashes(_) |
+                alloy_rpc_types::BlockTransactions::Uncle => {
+                    // alloy deserializes empty blocks into `BlockTransactions::Hashes`, if the tx
+                    // root is the empty root then we can just return an empty vec.
+                    if rpc_block.header.transactions_root == EMPTY_TRANSACTIONS {
+                        Ok(Vec::new())
+                    } else {
+                        Err(ConversionError::Custom("missing transactions".to_string()))
+                    }
+                }
+            };
+            transactions?
+        };
+
+        let header = rpc_block.header.inner;
+
+        Ok(Self {
+            header,
+            body: BlockBody {
+                transactions,
+                ommers: Default::default(),
+                withdrawals: rpc_block.withdrawals.map(|w| w.into_inner().into()),
+            },
+        })
+    }
+}
 
 impl TryFrom<AnyRpcBlock> for Block {
     type Error = alloy_rpc_types::ConversionError;
@@ -93,6 +134,40 @@ impl TryFrom<AnyRpcBlock> for Block {
                 withdrawals: block.withdrawals.map(|w| w.into_inner().into()),
             },
         })
+    }
+}
+
+impl TryFrom<RpcTransaction> for TransactionSigned {
+    type Error = alloy_rpc_types::ConversionError;
+
+    fn try_from(tx: RpcTransaction) -> Result<Self, Self::Error> {
+        use alloy_rpc_types::ConversionError;
+
+        let (transaction, signature, hash) = match tx.inner {
+            TxEnvelope::Legacy(tx) => {
+                let (tx, signature, hash) = tx.into_parts();
+                (Transaction::Legacy(tx), signature, hash)
+            }
+            TxEnvelope::Eip2930(tx) => {
+                let (tx, signature, hash) = tx.into_parts();
+                (Transaction::Eip2930(tx), signature, hash)
+            }
+            TxEnvelope::Eip1559(tx) => {
+                let (tx, signature, hash) = tx.into_parts();
+                (Transaction::Eip1559(tx), signature, hash)
+            }
+            TxEnvelope::Eip4844(tx) => {
+                let (tx, signature, hash) = tx.into_parts();
+                (Transaction::Eip4844(tx.into()), signature, hash)
+            }
+            TxEnvelope::Eip7702(tx) => {
+                let (tx, signature, hash) = tx.into_parts();
+                (Transaction::Eip7702(tx), signature, hash)
+            }
+            _ => return Err(ConversionError::Custom("unknown transaction type".to_string())),
+        };
+
+        Ok(Self { transaction, signature, hash: hash.into() })
     }
 }
 

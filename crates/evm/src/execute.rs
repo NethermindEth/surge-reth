@@ -21,10 +21,7 @@ use reth_consensus::ConsensusError;
 use reth_primitives::{BlockWithSenders, NodePrimitives, Receipt};
 use reth_prune_types::PruneModes;
 use reth_revm::batch::BlockBatchRecord;
-use revm::{
-    db::{states::bundle_state::BundleRetention, BundleState},
-    State,
-};
+use revm::db::{states::bundle_state::BundleRetention, BundleState, State};
 use revm_primitives::{db::Database, Account, AccountStatus, EvmState, U256};
 
 /// A general purpose executor trait that executes an input (e.g. block) and produces an output
@@ -193,7 +190,7 @@ pub struct ExecuteOutput<R = Receipt> {
     pub receipts: Vec<R>,
     /// Cumulative gas used in the block execution.
     pub gas_used: u64,
-    /// The skipped transactions when `BlockExecutionInput::enable_skip`.
+    /// The skipped transactions when optimistic set to true.
     pub skipped_list: Vec<usize>,
 }
 
@@ -240,6 +237,9 @@ pub trait BlockExecutionStrategy {
 
     /// Returns a mutable reference to the current state.
     fn state_mut(&mut self) -> &mut State<Self::DB>;
+
+    /// Return current state
+    fn state(self) -> State<Self::DB>;
 
     /// Sets a hook to be called after each state change during execution.
     fn with_state_hook(&mut self, _hook: Option<Box<dyn OnStateHook>>) {}
@@ -369,6 +369,7 @@ where
             self.strategy.execute_transactions(input)?;
         let requests =
             self.strategy.apply_post_execution_changes(block, total_difficulty, &receipts)?;
+
         let state = self.strategy.finish();
 
         Ok(BlockExecutionOutput { state, receipts, requests, gas_used, skipped_list })
@@ -720,6 +721,10 @@ mod tests {
 
         fn state_mut(&mut self) -> &mut State<DB> {
             &mut self.state
+        }
+
+        fn state(self) -> State<DB> {
+            self.state
         }
 
         fn with_state_hook(&mut self, _hook: Option<Box<dyn OnStateHook>>) {}
