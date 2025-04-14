@@ -78,8 +78,8 @@ impl ConfigureEvmEnv for TaikoEvmConfig {
             }
         }
         // set the treasury address
-        let treasury = self.chain_spec.treasury();
-        tx_env.taiko.treasury = treasury;
+        // TODO: make this configurable
+        tx_env.taiko.treasury = Address::ZERO;
     }
 
     fn fill_tx_env_system_contract_call(

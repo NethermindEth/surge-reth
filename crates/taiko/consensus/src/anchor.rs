@@ -20,7 +20,7 @@ pub struct ProtocolBaseFeeConfig {
     /// BaseFeeConfig::minGasExcess
     pub min_gas_excess: u64,
     /// BaseFeeConfig::maxGasIssuancePerBlock
-    pub max_gas_issuance_per_block: u32,
+    pub max_gas_issuance_per_block: u64,
 }
 
 /// Data required to validate a Taiko Block
@@ -105,7 +105,7 @@ sol! {
         /// minGasExcess for eip1559
         uint64 minGasExcess;
         /// maxGasIssuancePerBlock for eip1559
-        uint32 maxGasIssuancePerBlock;
+        uint64 maxGasIssuancePerBlock;
     }
 
     function anchorV2(
