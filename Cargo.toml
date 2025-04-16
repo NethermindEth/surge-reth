@@ -442,7 +442,7 @@ reth-zstd-compressors = { path = "crates/storage/zstd-compressors", default-feat
 
 # taiko
 reth-taiko-cli = { path = "crates/taiko/cli" }
-reth-taiko-consensus = { path = "crates/taiko/consensus" }
+reth-taiko-consensus = { path = "crates/taiko/consensus", default-features = false }
 reth-taiko-primitives = { path = "crates/taiko/primitives" }
 reth-taiko-evm = { path = "crates/taiko/evm" }
 reth-taiko-payload-builder = { path = "crates/taiko/payload/builder" }

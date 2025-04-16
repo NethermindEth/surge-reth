@@ -25,7 +25,7 @@ reth-primitives = { workspace = true, features = ["taiko"] }
 reth-rpc.workspace = true
 
 # taiko
-reth-taiko-consensus.workspace = true
+reth-taiko-consensus = { workspace = true, features = ["beacon-consensus"] }
 reth-taiko-evm.workspace = true
 reth-taiko-engine-primitives.workspace = true
 reth-taiko-engine-types.workspace = true
