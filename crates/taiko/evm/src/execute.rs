@@ -218,7 +218,6 @@ where
         let mut cumulative_gas_used = 0;
         let mut receipts = Vec::with_capacity(block.body.transactions.len());
         let mut skipped_list = Vec::with_capacity(block.body.transactions.len());
-        let treasury = self.chain_spec.treasury();
 
         for (idx, (sender, transaction)) in block.transactions_with_sender().enumerate() {
             let is_anchor = idx == 0 && self.enable_anchor;
