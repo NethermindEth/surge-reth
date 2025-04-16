@@ -698,3 +698,5 @@ revm = { git = "https://github.com/NethermindEth/surge-revm.git", branch = "feat
 revm-interpreter = { git = "https://github.com/NethermindEth/surge-revm.git", branch = "feat/surge-reth-integration" }
 revm-precompile = { git = "https://github.com/NethermindEth/surge-revm.git", branch = "feat/surge-reth-integration" }
 revm-primitives = { git = "https://github.com/NethermindEth/surge-revm.git", branch = "feat/surge-reth-integration" }
+
+c-kzg = { git = "https://github.com/brechtpd/c-kzg-4844", branch = "for-alpha7" }
