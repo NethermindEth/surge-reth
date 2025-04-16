@@ -89,11 +89,13 @@ pub mod serde_bincode_compat {
     };
 }
 
-/// Temp helper struct for integrating [`NodePrimitives`].
+// Temp helper struct for integrating [`NodePrimitives`].
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
+#[cfg(feature = "arbitrary")]
 pub struct EthPrimitives;
 
+#[cfg(feature = "arbitrary")]
 impl reth_primitives_traits::NodePrimitives for EthPrimitives {
     type Block = crate::Block;
     type BlockHeader = alloy_consensus::Header;
