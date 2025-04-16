@@ -14,11 +14,11 @@ workspace = true
 # reth
 reth-consensus-common.workspace = true
 reth-primitives = { workspace = true, features = ["taiko"] }
+reth-primitives-traits = { workspace = true, optional = true }
 reth-consensus.workspace = true
 reth-chainspec = { workspace = true }
-reth-primitives-traits.workspace = true
 reth-ethereum-consensus.workspace = true
-reth-provider.workspace = true
+reth-provider = { workspace = true, optional = true }
 
 # Alloy
 alloy-sol-types.workspace = true
@@ -31,3 +31,7 @@ revm-primitives = { workspace = true }
 # Misc
 once_cell.workspace = true
 eyre.workspace = true
+
+[features]
+default = ["beacon-consensus"]
+beacon-consensus = ["dep:reth-provider", "dep:reth-primitives-traits"]
