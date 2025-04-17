@@ -116,11 +116,11 @@ std = [
 ]
 reth-codec = [
 	"dep:reth-codecs",
-	"dep:reth-zstd-compressors",
 	"dep:modular-bitfield",
 	"std",
 	"reth-primitives-traits/reth-codec",
 ]
+zstd-codec = ["dep:reth-zstd-compressors", "reth-codec"]
 asm-keccak = ["alloy-primitives/asm-keccak", "revm-primitives/asm-keccak"]
 arbitrary = [
 	"dep:arbitrary",

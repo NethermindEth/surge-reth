@@ -1347,7 +1347,7 @@ impl Decodable2718 for TransactionSigned {
     }
 }
 
-#[cfg(any(test, feature = "reth-codec"))]
+#[cfg(any(test, feature = "zstd-codec"))]
 impl reth_codecs::Compact for TransactionSigned {
     fn to_compact<B>(&self, buf: &mut B) -> usize
     where
@@ -1424,6 +1424,50 @@ impl reth_codecs::Compact for TransactionSigned {
         };
 
         (Self { signature, transaction, hash: Default::default() }, buf)
+    }
+}
+
+#[cfg(all(not(feature = "zstd-codec"), feature = "reth-codec"))]
+impl reth_codecs::Compact for TransactionSigned {
+    fn to_compact<B>(&self, buf: &mut B) -> usize
+    where
+        B: bytes::BufMut + AsMut<[u8]>,
+    {
+        let start = buf.as_mut().len();
+
+        // Placeholder for bitflags.
+        // The first byte uses 4 bits as flags: IsCompressed[1bit], TxType[2bits], Signature[1bit]
+        buf.put_u8(0);
+
+        let sig_bit = self.signature.to_compact(buf) as u8;
+        let zstd_bit = false;
+        let tx_bits = self.transaction.to_compact(buf) as u8;
+
+        // Replace bitflags with the actual values
+        buf.as_mut()[start] = sig_bit | (tx_bits << 1) | ((zstd_bit as u8) << 3);
+
+        buf.as_mut().len() - start
+    }
+
+    // Allowing dead code, as this function is extracted from behind feature, so it can be tested
+    #[allow(dead_code)]
+    fn from_compact(mut buf: &[u8], _len: usize) -> (TransactionSigned, &[u8]) {
+        // The first byte uses 4 bits as flags: IsCompressed[1], TxType[2], Signature[1]
+        let bitflags = bytes::Buf::get_u8(&mut buf) as usize;
+
+        let sig_bit = bitflags & 1;
+        let (signature, buf) = Signature::from_compact(buf, sig_bit);
+
+        let zstd_bit = bitflags >> 3;
+        assert_eq!(
+        zstd_bit, 0,
+        "zstd-codec feature is not enabled, cannot decode `TransactionSignedNoHash` with zstd flag"
+    );
+
+        let transaction_type = bitflags >> 1;
+        let (transaction, buf) = Transaction::from_compact(buf, transaction_type);
+
+        (TransactionSigned { signature, transaction, hash: Default::default() }, buf)
     }
 }
 

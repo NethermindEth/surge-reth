@@ -13,7 +13,7 @@ use reth_primitives_traits::receipt::ReceiptExt;
 use serde::{Deserialize, Serialize};
 
 use crate::TxType;
-#[cfg(feature = "reth-codec")]
+#[cfg(feature = "zstd-codec")]
 use reth_zstd_compressors::{RECEIPT_COMPRESSOR, RECEIPT_DECOMPRESSOR};
 
 /// Retrieves gas spent by transactions as a vector of tuples (transaction index, gas used).
@@ -23,7 +23,8 @@ pub use reth_primitives_traits::receipt::gas_spent_by_transactions;
 #[derive(
     Clone, Debug, PartialEq, Eq, Default, RlpEncodable, RlpDecodable, Serialize, Deserialize,
 )]
-#[cfg_attr(any(test, feature = "reth-codec"), derive(reth_codecs::CompactZstd))]
+#[cfg_attr(any(test, feature = "zstd-codec"), derive(reth_codecs::CompactZstd))]
+#[cfg_attr(all(not(feature = "zstd-codec"), feature = "reth-codec"), derive(reth_codecs::Compact))]
 #[cfg_attr(any(test, feature = "reth-codec"), reth_codecs::add_arbitrary_tests)]
 #[rlp(trailing)]
 pub struct Receipt {
