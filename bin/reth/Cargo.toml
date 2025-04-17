@@ -18,8 +18,8 @@ reth-cli.workspace = true
 reth-ethereum-cli.workspace = true
 reth-chainspec.workspace = true
 reth-config.workspace = true
-reth-primitives.workspace = true
-reth-primitives-traits.workspace = true
+reth-primitives = { workspace = true, features = ["arbitrary"] }
+reth-primitives-traits = { workspace = true, features = ["arbitrary"] }
 reth-fs-util.workspace = true
 reth-db = { workspace = true, features = ["mdbx"] }
 reth-db-api.workspace = true

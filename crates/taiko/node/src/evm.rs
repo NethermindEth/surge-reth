@@ -3,4 +3,4 @@
 #[doc(inline)]
 pub use reth_taiko_evm::TaikoEvmConfig;
 #[doc(inline)]
-pub use reth_taiko_evm::TaikoExecutorProvider;
+pub use reth_taiko_evm::TaikoExecutorProviderBuilder;

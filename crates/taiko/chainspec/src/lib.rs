@@ -11,6 +11,9 @@
 
 extern crate alloc;
 
+/// The chain spec module.
+pub mod spec;
+
 use alloc::{boxed::Box, vec::Vec};
 use alloy_chains::Chain;
 use alloy_consensus::Header;
@@ -197,7 +200,7 @@ impl TaikoChainSpecBuilder {
 }
 
 /// OP stack chain spec type.
-#[derive(Debug, Clone, Deref, Into, Constructor, PartialEq, Eq)]
+#[derive(Debug, Clone, Deref, Into, Constructor, PartialEq, Eq, From)]
 pub struct TaikoChainSpec {
     /// [`ChainSpec`].
     pub inner: ChainSpec,

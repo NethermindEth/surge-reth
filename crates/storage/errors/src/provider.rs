@@ -144,6 +144,10 @@ pub enum ProviderError {
     /// Head L1 origin error
     #[display("not found")]
     HeadL1OriginNotFound,
+
+    /// RPC error.
+    #[display("failed to fetch data from RPC: {_0}")]
+    RPC(String),
 }
 
 impl From<DatabaseError> for ProviderError {

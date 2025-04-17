@@ -313,6 +313,7 @@ panic = "abort"
 codegen-units = 1
 overflow-checks = true
 
+
 [workspace.dependencies]
 # reth
 op-reth = { path = "crates/optimism/bin" }
@@ -402,9 +403,7 @@ reth-payload-builder-primitives = { path = "crates/payload/builder-primitives" }
 reth-payload-primitives = { path = "crates/payload/primitives" }
 reth-payload-validator = { path = "crates/payload/validator" }
 reth-payload-util = { path = "crates/payload/util" }
-reth-primitives = { path = "crates/primitives", default-features = false, features = [
-    "std",
-] }
+reth-primitives = { path = "crates/primitives", default-features = false }
 reth-primitives-traits = { path = "crates/primitives-traits", default-features = false }
 reth-provider = { path = "crates/storage/provider" }
 reth-prune = { path = "crates/prune/prune" }
@@ -441,7 +440,7 @@ reth-zstd-compressors = { path = "crates/storage/zstd-compressors", default-feat
 
 # taiko
 reth-taiko-cli = { path = "crates/taiko/cli" }
-reth-taiko-consensus = { path = "crates/taiko/consensus" }
+reth-taiko-consensus = { path = "crates/taiko/consensus", default-features = false }
 reth-taiko-primitives = { path = "crates/taiko/primitives" }
 reth-taiko-evm = { path = "crates/taiko/evm" }
 reth-taiko-payload-builder = { path = "crates/taiko/payload/builder" }
@@ -455,19 +454,32 @@ reth-taiko-rpc = { path = "crates/taiko/rpc" }
 flate2 = "1.0.35"
 
 # revm
-revm = { version = "18.0.0", features = ["std"], default-features = false }
+
+revm = { version = "18.0.0", features = [
+    "std",
+    "taiko",
+], default-features = false }
 revm-inspectors = "0.12.0"
-revm-primitives = { version = "14.0.0", default-features = false }
+revm-primitives = { version = "14.0.0", default-features = false, features = [
+    "taiko",
+] }
+revm-precompile = { version = "15.0.0", default-features = false, features = [
+    "std",
+    "taiko",
+] }
 
 # eth
-alloy-chains = { version = "0.1.32", default-features = false }
+alloy-chains = { version = "0.2", default-features = false }
 alloy-dyn-abi = "0.8.11"
 alloy-primitives = { version = "0.8.11", default-features = false }
 alloy-rlp = { version = "0.3.10", default-features = false }
 alloy-sol-types = "0.8.11"
-alloy-trie = { version = "0.7", default-features = false }
+alloy-trie = { version = "0.7.9", default-features = false }
 
-alloy-consensus = { version = "0.7.3", default-features = false }
+alloy-consensus = { version = "0.7.3", default-features = false, features = [
+    "serde",
+    "serde-bincode-compat",
+] }
 alloy-contract = { version = "0.7.3", default-features = false }
 alloy-eips = { version = "0.7.3", default-features = false }
 alloy-genesis = { version = "0.7.3", default-features = false }
@@ -537,7 +549,7 @@ modular-bitfield = "0.11.2"
 notify = { version = "6.1.1", default-features = false, features = [
     "macos_fsevent",
 ] }
-nybbles = { version = "0.2.1", default-features = false }
+nybbles = { version = "0.3.4", default-features = false }
 once_cell = { version = "1.19", default-features = false, features = [
     "critical-section",
 ] }
@@ -680,10 +692,9 @@ alloy-transport-ws = { git = "https://github.com/taikoxyz/alloy", branch = "v0.7
 # op-alloy-rpc-types = { git = "https://github.com/alloy-rs/op-alloy", rev = "debfc29" }
 # op-alloy-rpc-types-engine = { git = "https://github.com/alloy-rs/op-alloy", rev = "debfc29" }
 
-revm = { git = "https://github.com/taikoxyz/revm.git", branch = "v50-taiko" }
-revm-interpreter = { git = "https://github.com/taikoxyz/revm.git", branch = "v50-taiko" }
-revm-precompile = { git = "https://github.com/taikoxyz/revm.git", branch = "v50-taiko" }
-revm-primitives = { git = "https://github.com/taikoxyz/revm.git", branch = "v50-taiko" }
+revm = { git = "https://github.com/NethermindEth/surge-revm.git", branch = "feat/surge-reth-integration" }
+revm-interpreter = { git = "https://github.com/NethermindEth/surge-revm.git", branch = "feat/surge-reth-integration" }
+revm-precompile = { git = "https://github.com/NethermindEth/surge-revm.git", branch = "feat/surge-reth-integration" }
+revm-primitives = { git = "https://github.com/NethermindEth/surge-revm.git", branch = "feat/surge-reth-integration" }
 
-[patch.'https://github.com/bluealloy/revm.git']
-revm = { git = "https://github.com/taikoxyz/revm.git", branch = "v50-taiko" }
+c-kzg = { git = "https://github.com/brechtpd/c-kzg-4844", branch = "for-alpha7" }

@@ -19,7 +19,7 @@ use reth_node_builder::{NodeBuilder, WithLaunchContext};
 use reth_node_metrics::recorder::install_prometheus_recorder;
 use reth_taiko_chainspec::TaikoChainSpec;
 use reth_taiko_cli::chainspec::TaikoChainSpecParser;
-use reth_taiko_node::{TaikoExecutorProvider, TaikoNode};
+use reth_taiko_node::TaikoNode;
 use reth_tracing::FileWorkerGuard;
 use std::{ffi::OsString, fmt, future::Future, sync::Arc};
 use tracing::info;
@@ -161,16 +161,21 @@ impl<C: ChainSpecParser<ChainSpec = TaikoChainSpec>, Ext: clap::Args + fmt::Debu
             Commands::InitState(command) => {
                 runner.run_blocking_until_ctrl_c(command.execute::<TaikoNode>())
             }
-            Commands::Import(command) => runner.run_blocking_until_ctrl_c(
-                command.execute::<TaikoNode, _, _>(TaikoExecutorProvider::taiko),
-            ),
+            Commands::Import(_) => {
+                todo!("Add import command")
+                // runner.run_blocking_until_ctrl_c( command.execute::<TaikoNode, _,
+                // _>(TaikoExecutorProviderBuilder::taiko),)
+            }
             Commands::DumpGenesis(command) => runner.run_blocking_until_ctrl_c(command.execute()),
             Commands::Db(command) => {
                 runner.run_blocking_until_ctrl_c(command.execute::<TaikoNode>())
             }
-            Commands::Stage(command) => runner.run_command_until_exit(|ctx| {
-                command.execute::<TaikoNode, _, _>(ctx, TaikoExecutorProvider::taiko)
-            }),
+            Commands::Stage(_) => {
+                todo!("Add stage command");
+                //     runner.run_command_until_exit(|ctx| {
+                //     command.execute::<TaikoNode, _, _>(ctx, TaikoExecutorProviderBuilder::taiko)
+                // })
+            }
             Commands::P2P(command) => runner.run_until_ctrl_c(command.execute()),
             #[cfg(feature = "dev")]
             Commands::TestVectors(command) => runner.run_until_ctrl_c(command.execute()),
