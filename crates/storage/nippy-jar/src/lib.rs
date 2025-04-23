@@ -12,6 +12,9 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
+#[cfg(not(feature = "zstd"))]
+use derive_more as _;
+
 use memmap2::Mmap;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -155,6 +158,7 @@ impl<H: NippyJarHeader> NippyJar<H> {
     }
 
     /// Adds [`compression::Zstd`] compression.
+    #[cfg(feature = "zstd")]
     pub fn with_zstd(mut self, use_dict: bool, max_dict_size: usize) -> Self {
         self.compressor =
             Some(Compressors::Zstd(compression::Zstd::new(use_dict, max_dict_size, self.columns)));
