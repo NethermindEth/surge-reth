@@ -74,6 +74,13 @@ pub static TAIKO_A7_HARDFORKS: LazyLock<ChainHardforks> = LazyLock::new(|| {
                     .map_or(HEKLA_ONTAKE_HEIGHT, |h| h.parse().unwrap_or(HEKLA_ONTAKE_HEIGHT)),
             ),
         ),
+        (
+            TaikoHardfork::Pacaya.boxed(),
+            ForkCondition::Block(
+                std::env::var("HEKLA_PACAYA_HEIGHT")
+                    .map_or(1299888, |h| h.parse().unwrap_or(1299888)),
+            ),
+        ),
     ])
 });
 
@@ -104,6 +111,12 @@ pub static TAIKO_DEV_HARDFORKS: LazyLock<ChainHardforks> = LazyLock::new(|| {
                     .map_or(DEV_ONTAKE_HEIGHT, |h| h.parse().unwrap_or(DEV_ONTAKE_HEIGHT)),
             ),
         ),
+        (
+            TaikoHardfork::Pacaya.boxed(),
+            ForkCondition::Block(
+                std::env::var("DEV_PACAYA_HEIGHT").map_or(0, |h| h.parse().unwrap_or(0)),
+            ),
+        ),
     ])
 });
 
@@ -132,6 +145,13 @@ pub static TAIKO_MAINNET_HARDFORKS: LazyLock<ChainHardforks> = LazyLock::new(|| 
             ForkCondition::Block(
                 std::env::var("MAINNET_ONTAKE_HEIGHT")
                     .map_or(MAINNET_ONTAKE_HEIGHT, |h| h.parse().unwrap_or(MAINNET_ONTAKE_HEIGHT)),
+            ),
+        ),
+        (
+            TaikoHardfork::Pacaya.boxed(),
+            ForkCondition::Block(
+                std::env::var("MAINNET_PACAYA_HEIGHT")
+                    .map_or(1166000, |h| h.parse().unwrap_or(1166000)),
             ),
         ),
     ])
