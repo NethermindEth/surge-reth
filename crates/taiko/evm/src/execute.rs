@@ -31,7 +31,7 @@ use revm::JournaledState;
 use revm_primitives::{
     db::DatabaseCommit, EVMError, EnvWithHandlerCfg, HashSet, ResultAndState, U256,
 };
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::alloc::string::ToString;
 
@@ -327,10 +327,22 @@ where
 
             self.system_caller.on_state(&result_and_state.state);
             let ResultAndState { result, state } = result_and_state;
-            evm.db_mut().commit(state);
 
             // append gas used
             cumulative_gas_used += result.gas_used();
+
+            // enforce success for anchor transactions in taiko execution
+            if is_anchor && !result.is_success() {
+                return Err(BlockExecutionError::msg("Anchor transaction must be success"));
+            }
+
+            let mining_gas_limit = self.taiko_data.gas_limit;
+            if cumulative_gas_used > mining_gas_limit {
+                warn!("mining gas limit exceeded: {} > {}", cumulative_gas_used, mining_gas_limit);
+                break;
+            }
+
+            evm.db_mut().commit(state);
 
             // Push transaction changeset and calculate header bloom filter for receipt.
             receipts.push(
