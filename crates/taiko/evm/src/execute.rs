@@ -332,7 +332,7 @@ where
             cumulative_gas_used += result.gas_used();
 
             // enforce success for anchor transactions in taiko execution
-            if is_anchor && !result.is_success() {
+            if is_anchor && !self.optimistic && !result.is_success() {
                 return Err(BlockExecutionError::msg("Anchor transaction must be success"));
             }
 
