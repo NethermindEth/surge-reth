@@ -3,7 +3,6 @@
 use crate::{TaikoEngineTypes, TaikoEngineValidator, TaikoEvmConfig};
 use alloy_primitives::BlockNumber;
 use reth_basic_payload_builder::{BasicPayloadJobGenerator, BasicPayloadJobGeneratorConfig};
-use reth_evm::execute::BasicBlockExecutorProvider;
 use reth_network::{NetworkHandle, PeersInfo};
 use reth_node_builder::{
     components::{
@@ -20,10 +19,10 @@ use reth_primitives::{EthPrimitives, PooledTransactionsElement};
 use reth_provider::{CanonStateSubscriptions, EthStorage, L1OriginReader, ProviderResult};
 use reth_rpc::EthApi;
 use reth_taiko_chainspec::TaikoChainSpec;
-use reth_taiko_consensus::TaikoBeaconConsensus;
+use reth_taiko_consensus::{TaikoBeaconConsensus, TaikoData};
 use reth_taiko_engine_primitives::TaikoPayloadBuilderAttributes;
 use reth_taiko_engine_types::TaikoPayloadAttributes;
-use reth_taiko_evm::TaikoExecutionStrategyFactory;
+use reth_taiko_evm::{TaikoBlockExecutorProvider, TaikoExecutionStrategyFactory};
 use reth_taiko_primitives::L1Origin;
 use reth_tracing::tracing::{debug, info};
 use reth_transaction_pool::{
@@ -34,13 +33,18 @@ use reth_trie_db::MerklePatriciaTrie;
 use std::sync::Arc;
 
 /// Type configuration for a regular Ethereum node.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone)]
 #[non_exhaustive]
-pub struct TaikoNode;
+pub struct TaikoNode {
+    /// The taiko data.
+    taiko_data: TaikoData,
+}
 
 impl TaikoNode {
     /// Returns a [`ComponentsBuilder`] configured for a regular Ethereum node.
-    pub fn components<Node>() -> ComponentsBuilder<
+    pub fn components<Node>(
+        &self,
+    ) -> ComponentsBuilder<
         Node,
         TaikoPoolBuilder,
         TaikoPayloadBuilder,
@@ -60,9 +64,9 @@ impl TaikoNode {
         ComponentsBuilder::default()
             .node_types::<Node>()
             .pool(TaikoPoolBuilder::default())
-            .payload(TaikoPayloadBuilder::default())
+            .payload(TaikoPayloadBuilder::new(self.taiko_data.clone()))
             .network(TaikoNetworkBuilder::default())
-            .executor(TaikoExecutorBuilder::default())
+            .executor(TaikoExecutorBuilder::new(self.taiko_data.clone()))
             .consensus(TaikoConsensusBuilder::default())
     }
 }
@@ -115,7 +119,7 @@ where
     >;
 
     fn components_builder(&self) -> Self::ComponentsBuilder {
-        Self::components()
+        self.components()
     }
 
     fn add_ons(&self) -> Self::AddOns {
@@ -124,9 +128,17 @@ where
 }
 
 /// A regular ethereum evm and executor builder.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct TaikoExecutorBuilder;
+pub struct TaikoExecutorBuilder {
+    taiko_data: TaikoData,
+}
+impl TaikoExecutorBuilder {
+    /// Creates a new [`TaikoExecutorBuilder`].
+    pub const fn new(taiko_data: TaikoData) -> Self {
+        Self { taiko_data }
+    }
+}
 
 impl<Types, Node> ExecutorBuilder<Node> for TaikoExecutorBuilder
 where
@@ -134,7 +146,7 @@ where
     Node: FullNodeTypes<Types = Types>,
 {
     type EVM = TaikoEvmConfig;
-    type Executor = BasicBlockExecutorProvider<TaikoExecutionStrategyFactory>;
+    type Executor = TaikoBlockExecutorProvider<TaikoExecutionStrategyFactory>;
 
     async fn build_evm(
         self,
@@ -142,8 +154,8 @@ where
     ) -> eyre::Result<(Self::EVM, Self::Executor)> {
         let evm_config = TaikoEvmConfig::new(ctx.chain_spec());
         let strategy_factory =
-            TaikoExecutionStrategyFactory::new(ctx.chain_spec(), evm_config.clone());
-        let executor = BasicBlockExecutorProvider::new(strategy_factory);
+            TaikoExecutionStrategyFactory::new(ctx.chain_spec(), self.taiko_data);
+        let executor = TaikoBlockExecutorProvider::new(strategy_factory);
 
         Ok((evm_config, executor))
     }
@@ -226,9 +238,18 @@ where
 }
 
 /// A basic ethereum payload service.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct TaikoPayloadBuilder;
+pub struct TaikoPayloadBuilder {
+    taiko_data: TaikoData,
+}
+
+impl TaikoPayloadBuilder {
+    /// Creates a new [`TaikoPayloadBuilder`].
+    pub const fn new(taiko_data: TaikoData) -> Self {
+        Self { taiko_data }
+    }
+}
 
 impl<Types, Node, Pool> PayloadServiceBuilder<Node, Pool> for TaikoPayloadBuilder
 where
@@ -250,8 +271,11 @@ where
     ) -> eyre::Result<PayloadBuilderHandle<Types::Engine>> {
         let chain_spec = ctx.chain_spec();
         let evm_config = TaikoEvmConfig::new(chain_spec.clone());
-        let payload_builder =
-            reth_taiko_payload_builder::TaikoPayloadBuilder::new(evm_config, chain_spec);
+        let payload_builder = reth_taiko_payload_builder::TaikoPayloadBuilder::new(
+            evm_config,
+            chain_spec,
+            self.taiko_data,
+        );
         let conf = ctx.payload_builder_config();
 
         let payload_job_config = BasicPayloadJobGeneratorConfig::default()

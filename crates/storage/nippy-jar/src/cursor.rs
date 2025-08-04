@@ -1,9 +1,8 @@
 use crate::{
-    compression::{Compression, Compressors, Zstd},
-    DataReader, NippyJar, NippyJarError, NippyJarHeader, RefRow,
+    compression::Compression, DataReader, NippyJar, NippyJarError, NippyJarHeader, RefRow,
 };
+
 use std::{ops::Range, sync::Arc};
-use zstd::bulk::Decompressor;
 
 /// Simple cursor implementation to retrieve data from [`NippyJar`].
 #[derive(Clone)]
@@ -164,7 +163,8 @@ impl<'a, H: NippyJarHeader> NippyJarCursor<'a, H> {
         if let Some(compression) = self.jar.compressor() {
             let from = self.internal_buffer.len();
             match compression {
-                Compressors::Zstd(z) if z.use_dict => {
+                #[cfg(feature = "zstd")]
+                crate::compression::Compressors::Zstd(z) if z.use_dict => {
                     // If we are here, then for sure we have the necessary dictionaries and they're
                     // loaded (happens during deserialization). Otherwise, there's an issue
                     // somewhere else and we can't recover here anyway.
@@ -172,8 +172,9 @@ impl<'a, H: NippyJarHeader> NippyJarCursor<'a, H> {
                         [column]
                         .loaded()
                         .expect("dictionary to be loaded");
-                    let mut decompressor = Decompressor::with_prepared_dictionary(dictionaries)?;
-                    Zstd::decompress_with_dictionary(
+                    let mut decompressor =
+                        zstd::bulk::Decompressor::with_prepared_dictionary(dictionaries)?;
+                    crate::compression::Zstd::decompress_with_dictionary(
                         self.reader.data(column_offset_range),
                         &mut self.internal_buffer,
                         &mut decompressor,

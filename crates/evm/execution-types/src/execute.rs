@@ -10,16 +10,12 @@ pub struct BlockExecutionInput<'a, Block> {
     pub block: &'a Block,
     /// The total difficulty of the block.
     pub total_difficulty: U256,
-    /// Enable anchor transaction. Default is true.
-    pub enable_anchor: bool,
-    /// Enable skip invalid transaction.
-    pub enable_skip: bool,
 }
 
 impl<'a, Block> BlockExecutionInput<'a, Block> {
     /// Creates a new input.
     pub const fn new(block: &'a Block, total_difficulty: U256) -> Self {
-        Self { block, total_difficulty, enable_anchor: true, enable_skip: false }
+        Self { block, total_difficulty }
     }
 }
 
@@ -32,7 +28,7 @@ impl<'a, Block> From<(&'a Block, U256)> for BlockExecutionInput<'a, Block> {
 /// The output of an ethereum block.
 ///
 /// Contains the state changes, transaction receipts, and total gas used in the block.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct BlockExecutionOutput<T> {
     /// The changed state of the block after execution.
     pub state: BundleState,
@@ -42,7 +38,7 @@ pub struct BlockExecutionOutput<T> {
     pub requests: Requests,
     /// The total gas used by the block.
     pub gas_used: u64,
-    /// The skipped transactions when `BlockExecutionInput::enable_skip`.
+    /// The skipped transactions when optimistic set to true.
     pub skipped_list: Vec<usize>,
 }
 

@@ -243,8 +243,6 @@ mod tests {
         let input = BlockExecutionInput {
             block: &BlockWithSenders::default(),
             total_difficulty: Default::default(),
-            enable_anchor: false,
-            enable_skip: false,
         };
 
         let (tx, _rx) = mpsc::channel();
@@ -298,8 +296,6 @@ mod tests {
         let input = BlockExecutionInput {
             block: &BlockWithSenders::default(),
             total_difficulty: Default::default(),
-            enable_anchor: false,
-            enable_skip: false,
         };
 
         let (tx, rx) = mpsc::channel();

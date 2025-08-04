@@ -22,6 +22,7 @@
 extern crate alloc;
 
 mod traits;
+
 pub use traits::*;
 
 #[cfg(feature = "alloy-compat")]
@@ -52,6 +53,15 @@ pub use transaction::{
 
 pub use alloy_consensus::ReceiptWithBloom;
 
+pub use alloy_primitives::{
+    self, address, b256, bloom, bytes,
+    bytes::{Buf, BufMut, BytesMut},
+    eip191_hash_message, hex, hex_literal, keccak256, ruint,
+    utils::format_ether,
+    Address, BlockHash, BlockNumber, Bloom, BloomInput, Bytes, ChainId, Selector, StorageKey,
+    StorageValue, TxHash, TxIndex, TxKind, TxNumber, B128, B256, B512, B64, U128, U256, U64, U8,
+};
+
 // Re-exports
 pub use reth_ethereum_forks::*;
 
@@ -60,6 +70,9 @@ pub use arbitrary;
 
 #[cfg(feature = "c-kzg")]
 pub use c_kzg as kzg;
+
+pub use revm_precompile;
+pub use revm_primitives;
 
 /// Bincode-compatible serde implementations for commonly used types in Reth.
 ///
