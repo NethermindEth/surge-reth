@@ -14,9 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Download actionlint
-        id: get_actionlint
-        run: bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+        run: |
+          curl -sSfL -o /tmp/actionlint.tar.gz https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
         shell: bash
       - name: Check workflow files
-        run: SHELLCHECK_OPTS="-S error" ${{ steps.get_actionlint.outputs.executable }} -color
+        run: SHELLCHECK_OPTS="-S error" /tmp/actionlint -color
         shell: bash
